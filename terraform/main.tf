@@ -16,7 +16,7 @@ provider "aws" {
 data "terraform_remote_state" "infra_k8s" {
   backend = "s3"
   config = {
-    bucket = "fiap-soat-terraform-state-bucket"
+    bucket = "fiap-soat-terraform-state-963562973486"
     key    = "infra-k8s/terraform.tfstate"
     region = "us-east-1"
   }
