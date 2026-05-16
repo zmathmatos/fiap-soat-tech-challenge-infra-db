@@ -42,7 +42,10 @@ jobs:
         run: terraform validate
 
       - name: Terraform Plan
-        run: terraform plan -var-file=terraform.tfvars -out=tfplan
+        run: terraform plan
         env:
+          TF_VAR_environment: ${{ vars.ENVIRONMENT }}
+          TF_VAR_rds_database_port: ${{ secrets.RDS_DATABASE_PORT }}
+          TF_VAR_rds_database_name: ${{ secrets.RDS_DATABASE_NAME }}
           TF_VAR_rds_master_password: ${{ secrets.DB_PASSWORD }}
           TF_VAR_rds_master_username: ${{ secrets.DB_USER }}
