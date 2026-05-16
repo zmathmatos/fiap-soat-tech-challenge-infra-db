@@ -1,8 +1,9 @@
 name: Terraform Apply
 
+# Trigger the workflow manually from the GitHub Actions tab or via API
+# Avoid to provision infrastructure on every pull request on AWS Academy environment, 
+# since it has limited resources
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 env:
@@ -40,7 +41,10 @@ jobs:
         run: terraform init
 
       - name: Terraform Apply
-        run: terraform apply -var-file=terraform.tfvars -auto-approve
+        run: terraform apply -auto-approve
         env:
+          TF_VAR_environment: ${{ vars.ENVIRONMENT }}
+          TF_VAR_rds_database_port: ${{ secrets.RDS_DATABASE_PORT }}
+          TF_VAR_rds_database_name: ${{ secrets.RDS_DATABASE_NAME }}
           TF_VAR_rds_master_password: ${{ secrets.DB_PASSWORD }}
           TF_VAR_rds_master_username: ${{ secrets.DB_USER }}
