@@ -6,25 +6,21 @@ variable "identifier" {
 variable "engine_version" {
   description = "PostgreSQL engine version"
   type        = string
-  default     = "14.10"
 }
 
 variable "instance_class" {
   description = "RDS instance class"
   type        = string
-  default     = "db.t3.micro"
 }
 
 variable "allocated_storage" {
   description = "Allocated storage in GB"
   type        = number
-  default     = 20
 }
 
 variable "max_allocated_storage" {
   description = "Maximum allocated storage for autoscaling"
   type        = number
-  default     = 100
 }
 
 variable "storage_type" {
@@ -59,7 +55,6 @@ variable "master_password" {
 variable "port" {
   description = "Database port"
   type        = number
-  default     = 5432
 }
 
 variable "vpc_id" {
@@ -135,13 +130,12 @@ variable "auto_minor_version_upgrade" {
 variable "deletion_protection" {
   description = "Enable deletion protection"
   type        = bool
-  default     = true
 }
 
 variable "parameter_group_family" {
   description = "Parameter group family"
   type        = string
-  default     = "postgres14"
+  default     = "postgres17"
 }
 
 variable "parameters" {

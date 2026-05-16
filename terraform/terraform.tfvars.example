@@ -1,16 +1,6 @@
-project_name = "fiap-soat"
 environment  = "dev"
-aws_region   = "us-east-1"
 
-rds_engine_version          = "14.10"
-rds_instance_class          = "db.t3.micro"
-rds_allocated_storage       = 20
-rds_max_allocated_storage   = 100
-rds_storage_encrypted       = true
-rds_database_name           = "fiap_db"
-rds_master_username         = "postgres"
-rds_master_password         = "CHANGE_ME_SECURE_PASSWORD"
-rds_multi_az                = false
-rds_backup_retention_period = 7
-rds_deletion_protection     = true
-rds_skip_final_snapshot     = false
+rds_database_name           = "db_name"
+rds_master_username         = "db_username"
+rds_master_password         = "db_password"
+rds_database_port           = 5432

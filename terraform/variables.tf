@@ -19,7 +19,7 @@ variable "aws_region" {
 variable "rds_engine_version" {
   description = "RDS PostgreSQL engine version"
   type        = string
-  default     = "14.10"
+  default     = "17"
 }
 
 variable "rds_instance_class" {
@@ -49,13 +49,17 @@ variable "rds_storage_encrypted" {
 variable "rds_database_name" {
   description = "RDS database name"
   type        = string
-  default     = "fiap_db"
 }
+
+variable "rds_database_port" {
+  type    = number
+  default = 5432
+}
+
 
 variable "rds_master_username" {
   description = "RDS master username"
   type        = string
-  default     = "postgres"
   sensitive   = true
 }
 
@@ -80,7 +84,7 @@ variable "rds_backup_retention_period" {
 variable "rds_deletion_protection" {
   description = "Enable RDS deletion protection"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "rds_skip_final_snapshot" {
