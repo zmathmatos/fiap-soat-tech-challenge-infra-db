@@ -19,6 +19,8 @@ fiap-soat-tech-challenge-infra-db/
 │   └── workflows/
 │       ├── plan.yml        # Executa terraform plan em Pull Requests
 │       └── apply.yml       # Executa terraform apply manualmente via workflow_dispatch
+├── docs/
+│   └── infrastructure.mmd  # Diagrama Mermaid da infraestrutura provisionada
 ├── terraform/
 │   ├── backend.tf          # Configuração do backend S3 para estado remoto
 │   ├── main.tf             # Módulo raiz — instancia o módulo RDS
@@ -32,6 +34,8 @@ fiap-soat-tech-challenge-infra-db/
 │           └── outputs.tf
 └── README.md
 ```
+
+Clique aqui para visualizar o [diagrama da infraestrutura provisionada](https://github.com/zmathmatos/fiap-soat-tech-challenge-infra-db/blob/main/docs/infrastructure.mmd).
 
 ## Setup local
 
