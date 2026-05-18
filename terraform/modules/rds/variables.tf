@@ -115,12 +115,6 @@ variable "skip_final_snapshot" {
   default     = false
 }
 
-variable "enabled_cloudwatch_logs_exports" {
-  description = "CloudWatch log types to export"
-  type        = list(string)
-  default     = ["postgresql", "upgrade"]
-}
-
 variable "auto_minor_version_upgrade" {
   description = "Enable automatic minor version upgrades"
   type        = bool
