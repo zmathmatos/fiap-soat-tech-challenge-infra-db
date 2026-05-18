@@ -4,6 +4,8 @@ Repositório responsável pelo provisionamento da infraestrutura de banco de dad
 
 ## Pré-requisitos
 
+> **Atenção:** a infraestrutura base do repositório [fiap-soat-tech-challenge-infra-k8s](https://github.com/zmathmatos/fiap-soat-tech-challenge-infra-k8s) deve ser provisionada previamente.
+
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.0.
 - [AWS CLI](https://aws.amazon.com/cli/) configurado com credenciais válidas.
 - Acesso ao bucket S3 `fiap-soat-backend-bucket` (armazenamento do estado remoto).
