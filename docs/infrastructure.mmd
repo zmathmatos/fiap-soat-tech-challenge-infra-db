@@ -1,0 +1,38 @@
+flowchart TB
+ subgraph S3["S3"]
+        STATE_DB["fiap-soat-backend-bucket\ninfra-db/terraform.tfstate"]
+        STATE_K8S["fiap-soat-backend-bucket\ninfra-k8s/terraform.tfstate\n(remote state — read only)"]
+  end
+ subgraph PRIVATE_SUBNETS["Subnets Privadas \n(provisionado pelo infra-k8s)"]
+        SUBNET_A["Subnet 1"]
+        SUBNET_B["Subnet 2"]
+  end
+ subgraph EKS_SG["EKS Cluster Security Group\n(provisionado pelo infra-k8s)"]
+        EKS["EKS Cluster"]
+  end
+ subgraph RDS_LAYER["RDS Layer"]
+        SUBNET_GROUP["DB Subnet Group"]
+        RDS_SG["RDS Security Group\ningress: porta 5432\norigem: EKS Security Group"]
+        RDS[("RDS (PostgreSQL 17)")]
+  end
+ subgraph VPC["VPC (provisionada por infra-k8s)"]
+        PRIVATE_SUBNETS
+        EKS_SG
+        RDS_LAYER
+  end
+ subgraph AWS["AWS (us-east-1)"]
+        S3
+        VPC
+  end
+    SUBNET_A --> SUBNET_GROUP
+    SUBNET_B --> SUBNET_GROUP
+    SUBNET_GROUP --> RDS
+    RDS_SG --> RDS
+    EKS_SG -- acesso na porta 5432 --> RDS_SG
+    RDS -- armazena estado --- STATE_DB
+
+    style PRIVATE_SUBNETS fill:#FFF9C4
+    style EKS_SG fill:#FFE0B2
+    style RDS_LAYER fill:#BBDEFB
+    style S3 fill:#757575
+    style VPC fill:#C8E6C9
