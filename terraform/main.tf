@@ -16,7 +16,7 @@ provider "aws" {
 data "terraform_remote_state" "infra_k8s" {
   backend = "s3"
   config = {
-    bucket = "fiap-soat-terraform-state-bucket"
+    bucket = "fiap-soat-backend-bucket"
     key    = "infra-k8s/terraform.tfstate"
     region = "us-east-1"
   }
@@ -39,6 +39,7 @@ module "rds" {
   max_allocated_storage   = var.rds_max_allocated_storage
   storage_encrypted       = var.rds_storage_encrypted
   database_name           = var.rds_database_name
+  port                    = var.rds_database_port
   master_username         = var.rds_master_username
   master_password         = var.rds_master_password
   vpc_id                  = data.terraform_remote_state.infra_k8s.outputs.vpc_id
