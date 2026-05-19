@@ -1,38 +1,31 @@
+---
+config:
+  layout: dagre
+  theme: base
+---
 flowchart TB
- subgraph S3["S3"]
-        STATE_DB["fiap-soat-backend-bucket\ninfra-db/terraform.tfstate"]
-        STATE_K8S["fiap-soat-backend-bucket\ninfra-k8s/terraform.tfstate\n(remote state — read only)"]
+ subgraph RDS_LAYER["Relational Database Service (RDS) Layer"]
+        SG["RDS Security Group<br>ingress ← EKS Security Group"]
+        RDS[("RDS<br>PostgreSQL")]
   end
- subgraph PRIVATE_SUBNETS["Subnets Privadas \n(provisionado pelo infra-k8s)"]
-        SUBNET_A["Subnet 1"]
-        SUBNET_B["Subnet 2"]
-  end
- subgraph EKS_SG["EKS Cluster Security Group\n(provisionado pelo infra-k8s)"]
-        EKS["EKS Cluster"]
-  end
- subgraph RDS_LAYER["RDS Layer"]
-        SUBNET_GROUP["DB Subnet Group"]
-        RDS_SG["RDS Security Group\ningress: porta 5432\norigem: EKS Security Group"]
-        RDS[("RDS (PostgreSQL 17)")]
-  end
- subgraph VPC["VPC (provisionada por infra-k8s)"]
-        PRIVATE_SUBNETS
-        EKS_SG
+ subgraph VPC["Virtual Private Cloud (VPC) - provisionada por infra-k8s"]
+        SUBNETS["Subnets Privadas<br>Subnet 1 + Subnet 2"]
+        EKS["Elastic Kubernetes Service (EKS)<br>Cluster (provisionado por infra-k8s)"]
         RDS_LAYER
   end
- subgraph AWS["AWS (us-east-1)"]
-        S3
+ subgraph AWS["Amazon Web Services - us-east-1"]
+        S3["Simple Storage Service (S3)<br>tfstate: infra-db<br>+ infra-k8s (read only)"]
         VPC
   end
-    SUBNET_A --> SUBNET_GROUP
-    SUBNET_B --> SUBNET_GROUP
-    SUBNET_GROUP --> RDS
-    RDS_SG --> RDS
-    EKS_SG -- acesso na porta 5432 --> RDS_SG
-    RDS -- armazena estado --- STATE_DB
+    SUBNETS --> RDS
+    EKS --> SG
+    SG --> RDS
+    S3 -.-> RDS
 
-    style PRIVATE_SUBNETS fill:#FFF9C4
-    style EKS_SG fill:#FFE0B2
-    style RDS_LAYER fill:#BBDEFB
-    style S3 fill:#757575
-    style VPC fill:#C8E6C9
+    classDef aws       fill:#F5F5F5,stroke:#666,stroke-width:1px
+    classDef vpc       fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
+    classDef rdslayer  fill:#BBDEFB,stroke:#1565C0,stroke-width:1px
+    linkStyle 0 stroke:#F9A825,stroke-width:1.5px,fill:none
+    linkStyle 1 stroke:#C62828,stroke-width:2px,fill:none
+    linkStyle 2 stroke:#E65100,stroke-width:1.5px,fill:none
+    linkStyle 3 stroke:#757575,stroke-width:1.5px,stroke-dasharray:5 5,fill:none
