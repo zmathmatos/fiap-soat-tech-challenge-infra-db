@@ -16,6 +16,11 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "state_bucket" {
+  description = "S3 bucket holding the Terraform state (also used to read infra-k8s remote state)"
+  type        = string
+}
+
 variable "rds_engine_version" {
   description = "RDS PostgreSQL engine version"
   type        = string
