@@ -1,0 +1,42 @@
+flowchart TB
+    subgraph S3["Armazenamento de Estado (S3)"]
+        STATE_K8S["Estado do infra-k8s\n(somente leitura)\nFornece: VPC, subnets, SG do cluster"]
+    end
+
+    subgraph VPC["Rede Isolada — VPC\n(provisionada pelo infra-k8s)"]
+        subgraph PRIVATE_SUBNETS["Rede Privada\n(sem acesso direto pela internet)"]
+            SUBNET_A["Zona de Disponibilidade A"]
+            SUBNET_B["Zona de Disponibilidade B"]
+        end
+
+        subgraph EKS_SG["Cluster Kubernetes\n(provisionado pelo infra-k8s)"]
+            EKS["Aplicação\n(pods no EKS)"]
+        end
+
+        subgraph RDS_LAYER["Camada do Banco de Dados"]
+            SUBNET_GROUP["Grupo de Sub-redes\n(cobre as duas zonas)"]
+            PARAM_GROUP["Grupo de Parâmetros\n(configurações do PostgreSQL)"]
+            RDS_SG["Firewall do Banco\nPermite entrada apenas na porta 5432\norigem: Cluster Kubernetes"]
+            RDS[("Banco de Dados\nPostgreSQL 14\ndb.t3.micro · 20 GB\ncriptografado · backup 7 dias")]
+        end
+    end
+
+    subgraph AWS["AWS (us-east-1)"]
+        S3
+        VPC
+    end
+
+    STATE_K8S -. "lê IDs de rede ao provisionar" .-> RDS_LAYER
+
+    SUBNET_A --> SUBNET_GROUP
+    SUBNET_B --> SUBNET_GROUP
+    SUBNET_GROUP --> RDS
+    PARAM_GROUP --> RDS
+    RDS_SG --> RDS
+    EKS_SG -- "conexão na porta 5432\n(somente de dentro da VPC)" --> RDS_SG
+
+    style PRIVATE_SUBNETS fill:#FFF9C4
+    style EKS_SG fill:#FFE0B2
+    style RDS_LAYER fill:#BBDEFB
+    style S3 fill:#757575,color:#ffffff
+    style VPC fill:#C8E6C9
