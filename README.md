@@ -27,10 +27,8 @@ Sem a VPC e subnets privadas criadas pelo `infra-k8s`, o provisionamento falhar�
 O bucket S3 é compartilhado com o `infra-k8s` e identificado pela variável `TF_STATE_BUCKET`. Se o bucket não existir (por exemplo, após reset de sessão do AWS Academy):
 
 ```bash
-aws s3 mb s3://fiap-soat-backend-<ACCOUNT_ID> --region us-east-1
+aws s3 mb s3://<BUCKET_NAME> --region us-east-1
 ```
-
-Substitua `<ACCOUNT_ID>` pelo ID da sua conta AWS (`aws sts get-caller-identity --query Account --output text`).
 
 ## Setup local
 
@@ -39,8 +37,9 @@ Substitua `<ACCOUNT_ID>` pelo ID da sua conta AWS (`aws sts get-caller-identity 
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 # preencher: rds_database_name, rds_master_username, rds_master_password
 
-# 2. Exportar o nome do bucket de state
-export TF_STATE_BUCKET=fiap-soat-backend-<ACCOUNT_ID>
+# 2. Definir o nome do bucket de state em um .env
+echo 'export TF_STATE_BUCKET=<BUCKET_NAME>' > .env
+source .env
 ```
 
 Edite o `terraform/terraform.tfvars` com os valores desejados:
@@ -62,10 +61,9 @@ rds_database_port   = 5432
 ```bash
 cd terraform
 
-terraform init \
-  -backend-config="bucket=$TF_STATE_BUCKET" \
-  -backend-config="key=infra-db/terraform.tfstate" \
-  -backend-config="region=us-east-1"
+source ../.env
+
+terraform init
 
 terraform plan
 terraform apply
