@@ -36,7 +36,7 @@ jobs:
           terraform_version: 1.14.0
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
 
       - name: Terraform Validate
         run: terraform validate
@@ -45,6 +45,7 @@ jobs:
         run: terraform plan
         env:
           TF_VAR_environment: ${{ vars.ENVIRONMENT }}
+          TF_VAR_state_bucket: ${{ vars.TF_STATE_BUCKET }}
           TF_VAR_rds_database_port: ${{ secrets.RDS_DATABASE_PORT }}
           TF_VAR_rds_database_name: ${{ secrets.RDS_DATABASE_NAME }}
           TF_VAR_rds_master_password: ${{ secrets.DB_PASSWORD }}

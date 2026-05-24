@@ -71,7 +71,6 @@ resource "aws_db_instance" "main" {
   skip_final_snapshot       = var.skip_final_snapshot
   final_snapshot_identifier = "${var.identifier}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
 
-  enabled_cloudwatch_logs_exports = var.enabled_cloudwatch_logs_exports
   auto_minor_version_upgrade      = var.auto_minor_version_upgrade
   deletion_protection             = var.deletion_protection
 
