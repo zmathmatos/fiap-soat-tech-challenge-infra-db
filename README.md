@@ -46,7 +46,7 @@ Edite o `terraform/terraform.tfvars` com os valores desejados:
 
 ```hcl
 environment         = "dev"
-state_bucket        = "fiap-soat-backend-<ACCOUNT_ID>"
+state_bucket        = "<BUCKET_NAME>"
 
 rds_database_name   = "fiap_soat_db"
 rds_master_username = "postgres"
@@ -63,7 +63,7 @@ cd terraform
 
 source ../.env
 
-terraform init
+terraform init -backend-config="bucket=$TF_STATE_BUCKET"
 
 terraform plan
 terraform apply
@@ -168,10 +168,6 @@ terraform destroy -auto-approve
 ```
 
 O RDS demora aproximadamente 5 minutos para ser removido. Se `rds_skip_final_snapshot = false` (padrão), um snapshot final será criado automaticamente, o que aumenta o tempo de destruição.
-
-## Por que o export de logs para o CloudWatch foi removido
-
-O commit `7b1c248` removeu a opção `enabled_cloudwatch_logs_exports` do módulo RDS. O AWS Academy não permite que o Terraform crie a IAM role necessária para exportar logs do RDS para o CloudWatch Logs. Manter essa opção ativa causava falha no `terraform apply` com erro de IAM. A remoção resolve o problema sem impacto funcional no ambiente Academy.
 
 ## Troubleshooting
 
