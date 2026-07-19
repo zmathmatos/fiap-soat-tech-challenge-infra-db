@@ -14,7 +14,19 @@ Repositório de **infraestrutura centralizada** do FIAP SOAT Tech Challenge (Fas
 
 Antes da Fase 4 a infraestrutura estava dividida em dois repositórios (`infra-k8s` e `infra-db`). Agora está **consolidada aqui**, atendendo ao requisito de centralizar a criação de k8s + DB + Rabbit + Mongo e criar os schemas ao provisionar.
 
-> **Isolamento lógico:** devido ao limite de créditos do AWS Academy, os microsserviços compartilham uma única instância RDS e um único MongoDB, isolados **logicamente** (schemas no Postgres, database próprio no Mongo). Em produção real, cada serviço teria sua própria instância dedicada.
+## ⚠️ Decisão de arquitetura: banco único com isolamento lógico por schema
+
+> **Este projeto NÃO provisiona um banco por microsserviço.** Todos os serviços SQL compartilham **uma única instância RDS PostgreSQL**, e cada um recebe **seu próprio schema** (`os`, `execution`). O `billing-service` usa um **database dedicado** dentro de um único MongoDB.
+
+**Por quê?** O AWS Academy tem limite de créditos — múltiplas instâncias RDS/DocumentDB estourariam o orçamento do laboratório. Optamos por **isolamento lógico** em vez de físico:
+
+| Nível | Como o isolamento é garantido |
+|---|---|
+| PostgreSQL | Um schema por serviço (`os`, `execution`), criados automaticamente no provisionamento pelo módulo `db-bootstrap` |
+| MongoDB | Database `billing` exclusivo, com usuário próprio de acesso restrito (`readWrite` apenas nesse database) |
+| Regra de ouro | **Nenhum serviço acessa o schema/database de outro** — toda comunicação entre serviços é via RabbitMQ ou REST |
+
+Estamos cientes de que, em uma arquitetura de microsserviços em produção real, **cada serviço teria sua própria instância de banco dedicada** (database-per-service). A separação por schema preserva o desacoplamento lógico e permite migrar para instâncias dedicadas sem mudança de código nos serviços — apenas de connection string.
 
 ## Arquitetura provisionada
 
