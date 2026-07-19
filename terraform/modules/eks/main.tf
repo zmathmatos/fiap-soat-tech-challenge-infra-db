@@ -28,6 +28,11 @@ resource "aws_launch_template" "node" {
 
   name_prefix = "${var.cluster_name}-${each.key}-"
 
+  # Nodes live in private subnets; make the no-public-IP intent explicit (Sonar S6329).
+  network_interfaces {
+    associate_public_ip_address = false
+  }
+
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
