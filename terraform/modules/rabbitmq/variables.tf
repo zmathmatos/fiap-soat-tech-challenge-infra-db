@@ -31,3 +31,9 @@ variable "storage" {
   type        = string
   default     = "5Gi"
 }
+
+variable "storage_class_name" {
+  description = "StorageClass for the persistent volume (EKS default: gp2)"
+  type        = string
+  default     = "gp2"
+}

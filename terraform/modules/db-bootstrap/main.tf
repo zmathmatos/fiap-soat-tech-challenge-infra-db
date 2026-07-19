@@ -3,7 +3,9 @@ locals {
   labels  = { app = "db-bootstrap" }
   schemas = join(" ", var.postgres_schemas)
 
-  script = <<-EOT
+  # replace() strips CR so the script survives a Windows (CRLF) checkout —
+  # otherwise /bin/sh chokes on "set -eu\r".
+  script = replace(<<-EOT
     set -eu
     echo "Waiting for Postgres at $PGHOST:$PGPORT ..."
     until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; do
@@ -17,6 +19,7 @@ locals {
     done
     echo "Provisioned schemas: $SCHEMAS"
   EOT
+  , "\r\n", "\n")
 }
 
 resource "kubernetes_secret" "bootstrap" {

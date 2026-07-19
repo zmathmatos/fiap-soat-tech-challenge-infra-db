@@ -101,7 +101,8 @@ resource "kubernetes_stateful_set" "rabbitmq" {
         name = "data"
       }
       spec {
-        access_modes = ["ReadWriteOnce"]
+        access_modes       = ["ReadWriteOnce"]
+        storage_class_name = var.storage_class_name
         resources {
           requests = {
             storage = var.storage
