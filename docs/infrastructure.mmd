@@ -1,42 +1,56 @@
-flowchart TB
-    subgraph S3["Armazenamento de Estado (S3)"]
-        STATE_K8S["Estado do infra-k8s\n(somente leitura)\nFornece: VPC, subnets, SG do cluster"]
-    end
+---
+config:
+  layout: elk
+---
+flowchart LR
+ subgraph REDE["Rede privada (VPC)"]
+        NET["Subnets privadas + NAT\nambiente isolado da internet"]
+  end
+ subgraph PLATAFORMA["Ambiente de execução — Kubernetes (EKS)"]
+        RABBIT["RabbitMQ\ntroca de mensagens entre os serviços"]
+        MONGO[("MongoDB\nbanco do billing")]
+        BOOT["Rotina de inicialização\ncria os schemas assim que a infra sobe"]
+  end
+ subgraph BANCO["Banco relacional (PostgreSQL / RDS)"]
+        RDS[("PostgreSQL\nschema os e schema execution")]
+  end
+ subgraph AWS["☁️ AWS (us-east-1)"]
+        S3["Estado da infraestrutura (S3)\nregistra o que já foi criado"]
+        REDE
+        PLATAFORMA
+        BANCO
+        OBS["Observabilidade (New Relic)\nmonitoramento — opcional"]
+  end
+ subgraph SERVICOS["Microsserviços"]
+        OS["os-service"]
+        BILL["billing-service"]
+        EXEC["execution-service"]
+  end
+    START["INFRA-DB"] --> S3 & NET
+    NET --> RDS & RABBIT & MONGO
+    BOOT -- cria schemas --> RDS
+    OBS -. observa .-> RABBIT
+    EXEC -. usa schema execution .-> RDS
+    BILL -. usa .-> MONGO
+    OS -. mensagens .-> RABBIT
+    BILL -. mensagens .-> RABBIT
+    EXEC -. mensagens .-> RABBIT
+    OS -. usa schema os .-> BANCO
 
-    subgraph VPC["Rede Isolada — VPC\n(provisionada pelo infra-k8s)"]
-        subgraph PRIVATE_SUBNETS["Rede Privada\n(sem acesso direto pela internet)"]
-            SUBNET_A["Zona de Disponibilidade A"]
-            SUBNET_B["Zona de Disponibilidade B"]
-        end
-
-        subgraph EKS_SG["Cluster Kubernetes\n(provisionado pelo infra-k8s)"]
-            EKS["Aplicação\n(pods no EKS)"]
-        end
-
-        subgraph RDS_LAYER["Camada do Banco de Dados"]
-            SUBNET_GROUP["Grupo de Sub-redes\n(cobre as duas zonas)"]
-            PARAM_GROUP["Grupo de Parâmetros\n(configurações do PostgreSQL)"]
-            RDS_SG["Firewall do Banco\nPermite entrada apenas na porta 5432\norigem: Cluster Kubernetes"]
-            RDS[("Banco de Dados\nPostgreSQL 14\ndb.t3.micro · 20 GB\ncriptografado · backup 7 dias")]
-        end
-    end
-
-    subgraph AWS["AWS (us-east-1)"]
-        S3
-        VPC
-    end
-
-    STATE_K8S -. "lê IDs de rede ao provisionar" .-> RDS_LAYER
-
-    SUBNET_A --> SUBNET_GROUP
-    SUBNET_B --> SUBNET_GROUP
-    SUBNET_GROUP --> RDS
-    PARAM_GROUP --> RDS
-    RDS_SG --> RDS
-    EKS_SG -- "conexão na porta 5432\n(somente de dentro da VPC)" --> RDS_SG
-
-    style PRIVATE_SUBNETS fill:#FFF9C4
-    style EKS_SG fill:#FFE0B2
-    style RDS_LAYER fill:#BBDEFB
-    style S3 fill:#757575,color:#ffffff
-    style VPC fill:#C8E6C9
+    START@{ shape: rect}
+    style NET fill:#F1F8E9,stroke:#558B2F
+    style RABBIT fill:#FFCCBC,stroke:#D84315
+    style MONGO fill:#C8E6C9,stroke:#2E7D32
+    style BOOT fill:#E1BEE7,stroke:#6A1B9A
+    style RDS fill:#BBDEFB,stroke:#1565C0
+    style S3 fill:#ECEFF1,stroke:#607D8B
+    style REDE fill:#DCEDC8,stroke:#558B2F
+    style PLATAFORMA fill:#FFE0B2,stroke:#EF6C00
+    style BANCO fill:#E3F2FD,stroke:#1565C0
+    style OBS fill:#FFF9C4,stroke:#F9A825
+    style OS fill:#FFFFFF,stroke:#9E9E9E
+    style BILL fill:#FFFFFF,stroke:#9E9E9E
+    style EXEC fill:#FFFFFF,stroke:#9E9E9E
+    style START fill:#E3F2FD,stroke:#1565C0,stroke-width:2px
+    style AWS fill:#F5F5F5,stroke:#9E9E9E
+    style SERVICOS fill:#FAFAFA,stroke:#BDBDBD,stroke-dasharray: 5 5

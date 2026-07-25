@@ -1,6 +1,35 @@
-environment  = "dev"
+environment = "dev"
+aws_region  = "us-east-1"
 
-rds_database_name           = "db_name"
-rds_master_username         = "db_username"
-rds_master_password         = "db_password"
-rds_database_port           = 5432
+# --- EKS (AWS Academy: use the LabRole ARN for all three variables) ---
+# eks_cluster_role_arn     = "arn:aws:iam::<ACCOUNT_ID>:role/LabRole"
+# eks_node_group_role_arn  = "arn:aws:iam::<ACCOUNT_ID>:role/LabRole"
+# eks_access_principal_arn = "arn:aws:iam::<ACCOUNT_ID>:role/voclabs"
+
+# --- RDS PostgreSQL (shared instance, logical isolation per schema) ---
+rds_database_name   = "fiap_soat_db"
+rds_master_username = "postgres"
+rds_master_password = "change_this_password" # min 8 chars; do not use / " @
+rds_database_port   = 5432
+
+# Schemas created at provisioning time (one per SQL microservice)
+postgres_schemas = ["os", "execution"]
+
+# --- RabbitMQ (messaging on EKS) ---
+rabbitmq_username = "fiap"
+rabbitmq_password = "change_this_password"
+rabbitmq_vhost    = "fiap-soat"
+
+# --- MongoDB (NoSQL on EKS - billing-service) ---
+mongodb_root_username = "root"
+mongodb_root_password = "change_this_password"
+mongodb_database      = "billing"
+mongodb_app_username  = "billing"
+mongodb_app_password  = "change_this_password"
+
+# --- Observability (New Relic) - optional ---
+# newrelic_enabled     = true
+# newrelic_account_id  = 0
+# newrelic_api_key     = ""
+# newrelic_license_key = ""
+# alert_email          = "you@example.com"

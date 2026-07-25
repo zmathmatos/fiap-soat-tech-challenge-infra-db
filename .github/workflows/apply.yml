@@ -44,8 +44,13 @@ jobs:
         run: terraform apply -auto-approve
         env:
           TF_VAR_environment: ${{ vars.ENVIRONMENT }}
-          TF_VAR_state_bucket: ${{ vars.TF_STATE_BUCKET }}
           TF_VAR_rds_database_port: ${{ secrets.RDS_DATABASE_PORT }}
           TF_VAR_rds_database_name: ${{ secrets.RDS_DATABASE_NAME }}
-          TF_VAR_rds_master_password: ${{ secrets.DB_PASSWORD }}
           TF_VAR_rds_master_username: ${{ secrets.DB_USER }}
+          TF_VAR_rds_master_password: ${{ secrets.DB_PASSWORD }}
+          TF_VAR_rabbitmq_password: ${{ secrets.RABBITMQ_PASSWORD }}
+          TF_VAR_mongodb_root_password: ${{ secrets.MONGODB_ROOT_PASSWORD }}
+          TF_VAR_mongodb_app_password: ${{ secrets.MONGODB_APP_PASSWORD }}
+          TF_VAR_eks_cluster_role_arn: ${{ secrets.EKS_CLUSTER_ROLE_ARN }}
+          TF_VAR_eks_node_group_role_arn: ${{ secrets.EKS_NODE_GROUP_ROLE_ARN }}
+          TF_VAR_eks_access_principal_arn: ${{ secrets.EKS_ACCESS_PRINCIPAL_ARN }}

@@ -2,29 +2,63 @@
 
 ## Visão geral
 
-Repositório responsável pelo provisionamento do banco de dados do FIAP SOAT Tech Challenge. Utiliza Terraform para criar e gerenciar uma instância **AWS RDS PostgreSQL 17** dentro da VPC provisionada pelo [`infra-k8s`](https://github.com/zmathmatos/fiap-soat-tech-challenge-infra-k8s).
+Repositório de **infraestrutura centralizada** do FIAP SOAT Tech Challenge (Fase 4). Um único `terraform apply` provisiona toda a base compartilhada pelos microsserviços:
 
-O estado remoto é lido via backend S3 (mesmo bucket do `infra-k8s`), e os outputs de rede (`vpc_id`, `private_subnet_ids`, `eks_cluster_security_group_id`) são consumidos via `terraform_remote_state`.
+- **Rede** — VPC, subnets públicas/privadas e NAT Gateway
+- **Kubernetes (EKS)** — cluster onde rodam os microsserviços, o RabbitMQ e o MongoDB
+- **PostgreSQL (RDS)** — banco relacional compartilhado, com **isolamento lógico por schema**
+- **RabbitMQ** — mensageria (comunicação assíncrona entre serviços) rodando no EKS
+- **MongoDB** — banco não relacional rodando no EKS (usado pelo `billing-service`)
+- **Bootstrap de schemas** — cria os schemas do Postgres automaticamente ao provisionar
+- **Observabilidade (New Relic)** — opcional
 
-## Dependências
+Antes da Fase 4 a infraestrutura estava dividida em dois repositórios (`infra-k8s` e `infra-db`). Agora está **consolidada aqui**, atendendo ao requisito de centralizar a criação de k8s + DB + Rabbit + Mongo e criar os schemas ao provisionar.
 
-> **Importante:** o repositório `infra-k8s` **deve** ser provisionado antes deste. O módulo RDS lê os outputs:
-> - `vpc_id`
-> - `private_subnet_ids`
-> - `eks_cluster_security_group_id`
+## ⚠️ Decisão de arquitetura: banco único com isolamento lógico por schema
 
-Sem a VPC e subnets privadas criadas pelo `infra-k8s`, o provisionamento falhará com `DBSubnetGroupNotAllowedFault`.
+> **Este projeto NÃO provisiona um banco por microsserviço.** Todos os serviços SQL compartilham **uma única instância RDS PostgreSQL**, e cada um recebe **seu próprio schema** (`os`, `execution`). O `billing-service` usa um **database dedicado** dentro de um único MongoDB.
+
+**Por quê?** O AWS Academy tem limite de créditos — múltiplas instâncias RDS/DocumentDB estourariam o orçamento do laboratório. Optamos por **isolamento lógico** em vez de físico:
+
+| Nível | Como o isolamento é garantido |
+|---|---|
+| PostgreSQL | Um schema por serviço (`os`, `execution`), criados automaticamente no provisionamento pelo módulo `db-bootstrap` |
+| MongoDB | Database `billing` exclusivo, com usuário próprio de acesso restrito (`readWrite` apenas nesse database) |
+| Regra de ouro | **Nenhum serviço acessa o schema/database de outro** — toda comunicação entre serviços é via RabbitMQ ou REST |
+
+Estamos cientes de que, em uma arquitetura de microsserviços em produção real, **cada serviço teria sua própria instância de banco dedicada** (database-per-service). A separação por schema preserva o desacoplamento lógico e permite migrar para instâncias dedicadas sem mudança de código nos serviços — apenas de connection string.
+
+## Arquitetura provisionada
+
+| Camada | Recurso | Detalhe |
+|---|---|---|
+| Rede | VPC + subnets + NAT | `10.0.0.0/16`, 2 subnets públicas e 2 privadas |
+| Orquestração | EKS | Kubernetes gerenciado; node group `t3.medium` |
+| Relacional (SQL) | RDS PostgreSQL 17 | `db.t3.micro`, criptografado, em subnets privadas |
+| Não relacional (NoSQL) | MongoDB 7 | StatefulSet no EKS, com volume persistente |
+| Mensageria | RabbitMQ 3.13 | StatefulSet no EKS, com painel de gestão |
+| Observabilidade | New Relic | Opcional (`newrelic_enabled = true`) |
+
+**Mapa de dados por microsserviço:**
+
+| Microsserviço | Banco | Isolamento |
+|---|---|---|
+| `os-service` | PostgreSQL | schema `os` |
+| `execution-service` | PostgreSQL | schema `execution` |
+| `billing-service` | MongoDB | database `billing` |
+
+Todos os serviços trocam eventos via RabbitMQ (vhost `fiap-soat`) — nenhum serviço acessa o banco do outro diretamente.
 
 ## Pré-requisitos
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.6
-- [AWS CLI v2](https://aws.amazon.com/cli/) configurado com credenciais válidas
-- Bucket S3 pré-criado para armazenamento do estado remoto (o mesmo do `infra-k8s`)
-- State do `infra-k8s` aplicado previamente
+- [AWS CLI v2](https://aws.amazon.com/cli/) com credenciais válidas
+- Bucket S3 pré-criado para o estado remoto do Terraform
+- `kubectl` (para inspecionar o cluster após o provisionamento)
 
 ## Setup do bucket de state
 
-O bucket S3 é compartilhado com o `infra-k8s` e identificado pela variável `TF_STATE_BUCKET`. Se o bucket não existir (por exemplo, após reset de sessão do AWS Academy):
+O estado do Terraform é guardado em um bucket S3, identificado pela variável `TF_STATE_BUCKET`. Se o bucket não existir (por exemplo, após reset de sessão do AWS Academy):
 
 ```bash
 aws s3 mb s3://<BUCKET_NAME> --region us-east-1
@@ -35,26 +69,15 @@ aws s3 mb s3://<BUCKET_NAME> --region us-east-1
 ```bash
 # 1. Copiar o arquivo de variáveis e preencher os valores
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
-# preencher: rds_database_name, rds_master_username, rds_master_password
 
 # 2. Definir o nome do bucket de state em um .env
 echo 'export TF_STATE_BUCKET=<BUCKET_NAME>' > .env
 source .env
 ```
 
-Edite o `terraform/terraform.tfvars` com os valores desejados:
+Edite o `terraform/terraform.tfvars` com os valores desejados (senhas do RDS, RabbitMQ e MongoDB, e — no AWS Academy — o ARN da LabRole).
 
-```hcl
-environment         = "dev"
-state_bucket        = "<BUCKET_NAME>"
-
-rds_database_name   = "fiap_soat_db"
-rds_master_username = "postgres"
-rds_master_password = "sua_senha_segura"
-rds_database_port   = 5432
-```
-
-> **Atenção:** o arquivo `terraform.tfvars` está no `.gitignore`. Nunca o commite no repositório.
+> **Atenção:** `terraform.tfvars` está no `.gitignore`. Nunca o commite.
 
 ## Provisionamento via CLI
 
@@ -71,112 +94,127 @@ terraform apply
 
 Confirme digitando `yes` quando solicitado.
 
-## Módulo único: `modules/rds`
+Após o `apply`, configure o `kubectl`:
 
-| Recurso | Descrição |
+```bash
+$(terraform output -raw eks_configure_kubectl)
+```
+
+## Módulos
+
+| Módulo | Descrição |
 |---|---|
-| **DB Subnet Group** | Agrupa as subnets privadas fornecidas pelo `infra-k8s` |
-| **Security Group** | Porta 5432 aberta apenas para o EKS Cluster Security Group (ingress do `eks_cluster_security_group_id`) |
-| **RDS Instance** | PostgreSQL 17, `db.t3.micro`, 20 GB storage (autoscale até 100 GB), criptografado, Multi-AZ desligado, backup 7 dias, deletion protection desligado |
+| `network` | VPC, subnets públicas/privadas, Internet Gateway, NAT Gateway e rotas |
+| `eks` | Cluster EKS, node group e security group |
+| `kubernetes-namespace` | Namespace da aplicação (`fiap-soat`) |
+| `rds` | Instância RDS PostgreSQL, DB subnet group e security group |
+| `rabbitmq` | RabbitMQ (StatefulSet + Service + Secret) no EKS |
+| `mongodb` | MongoDB (StatefulSet + Service + Secret + init) no EKS |
+| `db-bootstrap` | Job que cria os schemas do Postgres ao provisionar |
+| `observability` | New Relic (dashboards, alertas, synthetics) — opcional |
 
-## Variáveis Terraform
+### Como os schemas são criados ao provisionar
 
-| Variável | Descrição | Padrão | Obrigatório |
-|---|---|---|---|
-| `project_name` | Nome do projeto | `fiap-soat` | não |
-| `environment` | Ambiente de implantação (`dev`, `staging`, `production`) | `dev` | não |
-| `aws_region` | Região AWS | `us-east-1` | não |
-| `state_bucket` | Bucket S3 do backend (também usado para ler remote state do `infra-k8s`) | — | **sim** |
-| `rds_engine_version` | Versão do PostgreSQL | `17` | não |
-| `rds_instance_class` | Classe da instância RDS | `db.t3.micro` | não |
-| `rds_allocated_storage` | Armazenamento inicial (GB) | `20` | não |
-| `rds_max_allocated_storage` | Limite de autoscaling de storage (GB) | `100` | não |
-| `rds_storage_encrypted` | Habilitar criptografia em repouso | `true` | não |
-| `rds_database_name` | Nome do banco de dados inicial | — | **sim** |
-| `rds_database_port` | Porta de escuta do banco (default PostgreSQL 5432) | `5432` | não |
-| `rds_master_username` | Usuário administrador do RDS *(sensitive)* | — | **sim** |
-| `rds_master_password` | Senha do usuário administrador *(sensitive)* | — | **sim** |
-| `rds_multi_az` | Habilitar Multi-AZ | `false` | não |
-| `rds_backup_retention_period` | Retenção de backups automáticos (dias) | `7` | não |
-| `rds_deletion_protection` | Habilitar proteção contra deleção | `false` | não |
-| `rds_skip_final_snapshot` | Pular snapshot final ao destruir | `false` | não |
+- **PostgreSQL:** o módulo `db-bootstrap` roda um Job dentro do cluster (portanto com acesso à rede privada onde o RDS vive). O Job aguarda o banco ficar disponível e executa `CREATE SCHEMA IF NOT EXISTS` para cada schema em `postgres_schemas` (padrão: `os`, `execution`). É idempotente — rodar de novo não quebra nada.
+- **MongoDB:** o módulo `mongodb` cria o database e o usuário da aplicação (`billing`) via script de inicialização executado no primeiro boot do container.
+- **RabbitMQ:** o virtual host da aplicação (`fiap-soat`) é criado automaticamente pelo próprio RabbitMQ na inicialização.
+
+## Variáveis principais
+
+| Variável | Descrição | Padrão |
+|---|---|---|
+| `environment` | Ambiente (`dev`, `staging`, `production`) | `dev` |
+| `aws_region` | Região AWS | `us-east-1` |
+| `kubernetes_version` | Versão do Kubernetes | `1.32` |
+| `eks_cluster_role_arn` | ARN da role do cluster (AWS Academy: LabRole) | `null` |
+| `eks_node_group_role_arn` | ARN da role do node group | `null` |
+| `eks_access_principal_arn` | ARN do principal com acesso ao cluster | `null` |
+| `rds_database_name` | Banco inicial do Postgres | `fiap_soat_db` |
+| `rds_master_username` / `rds_master_password` | Credenciais do RDS *(sensitive)* | — |
+| `postgres_schemas` | Schemas criados no provisionamento | `["os", "execution"]` |
+| `rabbitmq_username` / `rabbitmq_password` | Credenciais do RabbitMQ | `fiap` / *(sensitive)* |
+| `rabbitmq_vhost` | Virtual host da aplicação | `fiap-soat` |
+| `mongodb_root_username` / `mongodb_root_password` | Credenciais root do Mongo | `root` / *(sensitive)* |
+| `mongodb_database` | Database da aplicação | `billing` |
+| `mongodb_app_username` / `mongodb_app_password` | Usuário da aplicação no Mongo | `billing` / *(sensitive)* |
+| `newrelic_enabled` | Habilita observabilidade | `false` |
+
+Lista completa em [`terraform/variables.tf`](terraform/variables.tf).
 
 ## Outputs
 
 | Output | Descrição |
 |---|---|
-| `rds_endpoint` | Endpoint completo do RDS (`host:porta`) |
-| `rds_address` | Hostname do RDS (sem porta) |
-| `rds_port` | Porta de conexão |
-| `rds_database_name` | Nome do banco de dados criado |
-| `rds_security_group_id` | ID do Security Group do RDS |
+| `eks_cluster_name` | Nome do cluster EKS |
+| `eks_configure_kubectl` | Comando para configurar o `kubectl` |
+| `namespace` | Namespace da aplicação |
+| `rds_endpoint` / `rds_address` / `rds_port` | Conexão do PostgreSQL |
+| `postgres_schemas` | Schemas criados |
+| `rabbitmq_service` / `rabbitmq_amqp_url` | Conexão do RabbitMQ (interna ao cluster) |
+| `mongodb_service` / `mongodb_uri` | Conexão do MongoDB (interna ao cluster) |
+
+Valores marcados como sensíveis exigem `terraform output -raw <nome>`.
 
 ## GitHub Actions
 
-### `plan.yml`
-
-Disparado automaticamente em **Pull Requests** para `main` e manualmente via `workflow_dispatch`.
-
-Executa: `terraform init` → `terraform validate` → `terraform plan`.
-
-### `apply.yml`
-
-Disparado **manualmente** via `workflow_dispatch`. Usa o GitHub Environment `production` (requer aprovação manual antes de executar).
-
-Executa: `terraform init` → `terraform apply -auto-approve`.
+| Workflow | Gatilho | Ação |
+|---|---|---|
+| `plan.yml` | Pull Request para `main` + manual | `init` → `validate` → `plan` |
+| `apply.yml` | Manual (`workflow_dispatch`) | `init` → `apply` (Environment `production`, requer aprovação) |
+| `destroy.yml` | Manual (`workflow_dispatch`) | `init` → `destroy` |
 
 ### Secrets e variáveis necessários
 
 | Nome | Tipo | Descrição |
 |---|---|---|
-| `AWS_ACCESS_KEY_ID` | Secret | Chave de acesso AWS (credenciais temporárias do AWS Academy) |
+| `AWS_ACCESS_KEY_ID` | Secret | Chave de acesso AWS |
 | `AWS_SECRET_ACCESS_KEY` | Secret | Chave secreta AWS |
-| `AWS_SESSION_TOKEN` | Secret | Token de sessão AWS Academy (obrigatório — sessões temporárias) |
-| `DB_USER` | Secret | Master username do RDS |
-| `DB_PASSWORD` | Secret | Master password do RDS (mínimo 8 caracteres; não use `/`, `"` ou `@`) |
-| `RDS_DATABASE_NAME` | Secret | Nome do banco de dados inicial criado na instância |
-| `RDS_DATABASE_PORT` | Secret | Porta de escuta do banco (geralmente `5432`) |
-| `TF_STATE_BUCKET` | Var | Nome do bucket S3 do backend, ex: `fiap-soat-backend-430891654117` (mesmo do `infra-k8s`) |
-| `ENVIRONMENT` | Var | Ambiente alvo, ex: `dev`, `staging`, `production` |
+| `AWS_SESSION_TOKEN` | Secret | Token de sessão (AWS Academy) |
+| `DB_USER` / `DB_PASSWORD` | Secret | Credenciais master do RDS (senha sem `/`, `"`, `@`) |
+| `RDS_DATABASE_NAME` / `RDS_DATABASE_PORT` | Secret | Banco inicial e porta |
+| `RABBITMQ_PASSWORD` | Secret | Senha do RabbitMQ |
+| `MONGODB_ROOT_PASSWORD` | Secret | Senha root do MongoDB |
+| `MONGODB_APP_PASSWORD` | Secret | Senha do usuário da aplicação no MongoDB |
+| `EKS_CLUSTER_ROLE_ARN` | Secret | ARN da role do cluster (AWS Academy: LabRole) |
+| `EKS_NODE_GROUP_ROLE_ARN` | Secret | ARN da role do node group |
+| `EKS_ACCESS_PRINCIPAL_ARN` | Secret | ARN do principal com acesso ao cluster |
+| `TF_STATE_BUCKET` | Var | Bucket S3 do backend |
+| `ENVIRONMENT` | Var | Ambiente alvo (`dev`, `staging`, `production`) |
 
-## Como verificar recursos
+## Como verificar os recursos
 
 ```bash
-# Listar instâncias RDS com status
-aws rds describe-db-instances \
-  --region us-east-1 \
+# Configurar kubectl
+$(terraform output -raw eks_configure_kubectl)
+
+# Ver os pods de RabbitMQ e MongoDB
+kubectl get pods -n fiap-soat
+
+# Confirmar que os schemas foram criados
+kubectl logs job/db-bootstrap -n fiap-soat
+
+# Ver instância RDS
+aws rds describe-db-instances --region us-east-1 \
   --query 'DBInstances[].[DBInstanceIdentifier,Endpoint.Address,DBInstanceStatus]'
-
-# Ver outputs do Terraform
-terraform output rds_endpoint
-
-# Testar conexão (requer acesso à VPC — via bastion ou dentro do cluster)
-psql -h $(terraform output -raw rds_address) -U <user> -d <db>
 ```
 
-> O RDS está em subnets privadas. A conexão direta só funciona de dentro da VPC (pod no EKS, bastion host ou VPN).
-
 ## Como destruir (poupar créditos AWS Academy)
-
-O RDS (`db.t3.micro`) custa aproximadamente **$0.40/dia** + storage. Destrua quando não estiver em uso.
-
-> **Ordem correta de destruição:** destrua este repo **antes** do `infra-k8s` (o RDS depende da VPC). Se for destruir tudo: app → lambda → **infra-db** → infra-k8s.
 
 ```bash
 cd terraform
 terraform destroy -auto-approve
 ```
 
-O RDS demora aproximadamente 5 minutos para ser removido. Se `rds_skip_final_snapshot = false` (padrão), um snapshot final será criado automaticamente, o que aumenta o tempo de destruição.
+> O EKS e o RDS levam alguns minutos para serem removidos. Se `rds_skip_final_snapshot = false` (padrão), um snapshot final é criado, aumentando o tempo.
 
 ## Troubleshooting
 
 | Sintoma | Causa | Solução |
 |---|---|---|
-| `S3 bucket does not exist` | Bucket do Academy foi resetado entre sessões | Recriar o bucket: `aws s3 mb s3://$TF_STATE_BUCKET --region us-east-1` |
-| `DBSubnetGroupNotAllowedFault` | `infra-k8s` não foi provisionado; subnets privadas não existem | Provisionar o `infra-k8s` primeiro |
-| `InvalidParameterValue: must contain only alphanumeric chars` | Senha do RDS contém caracteres especiais inválidos (`/`, `"`, `@`) | Trocar `DB_PASSWORD` por uma senha sem esses caracteres |
-| `terraform destroy` demora mais que o esperado | `rds_skip_final_snapshot = false` — snapshot final está sendo criado | Aguardar (~10 min) |
+| `S3 bucket does not exist` | Bucket do Academy foi resetado | Recriar: `aws s3 mb s3://$TF_STATE_BUCKET --region us-east-1` |
+| `InvalidParameterValue: must contain only alphanumeric` | Senha do RDS com caracteres inválidos (`/`, `"`, `@`) | Trocar por senha sem esses caracteres |
+| Job `db-bootstrap` em `Error`/`Backoff` | RDS ainda subindo ou security group bloqueando | Aguardar; conferir `kubectl logs job/db-bootstrap -n fiap-soat` |
+| Pods `rabbitmq`/`mongodb` em `Pending` | Sem volume/PV disponível ou nós insuficientes | Conferir `kubectl describe pod` e a capacidade do node group |
 
 ## Estrutura do projeto
 
@@ -184,22 +222,26 @@ O RDS demora aproximadamente 5 minutos para ser removido. Se `rds_skip_final_sna
 fiap-soat-tech-challenge-infra-db/
 ├── .github/
 │   └── workflows/
-│       ├── plan.yml        # Executa terraform plan em Pull Requests
-│       └── apply.yml       # Executa terraform apply manualmente via workflow_dispatch
+│       ├── plan.yml
+│       ├── apply.yml
+│       └── destroy.yml
 ├── docs/
-│   └── infrastructure.mmd  # Diagrama Mermaid da infraestrutura provisionada
+│   └── infrastructure.mmd        # Diagrama Mermaid da infraestrutura
 ├── terraform/
-│   ├── backend.tf          # Configuração do backend S3 (partial — bucket via -backend-config)
-│   ├── main.tf             # Módulo raiz — instancia o módulo RDS
-│   ├── variables.tf        # Declaração das variáveis de entrada
-│   ├── outputs.tf          # Outputs exportados (endpoint, porta, etc.)
-│   ├── terraform.tfvars.example  # Modelo de arquivo de variáveis
+│   ├── backend.tf                # Backend S3 (bucket via -backend-config)
+│   ├── providers.tf              # Providers aws, kubernetes, helm, newrelic
+│   ├── main.tf                   # Módulo raiz — orquestra todos os módulos
+│   ├── variables.tf
+│   ├── outputs.tf
+│   ├── terraform.tfvars.example
 │   └── modules/
-│       └── rds/
-│           ├── main.tf     # Recursos AWS: RDS instance, security group, subnet group
-│           ├── variables.tf
-│           └── outputs.tf
+│       ├── network/
+│       ├── eks/
+│       ├── kubernetes-namespace/
+│       ├── rds/
+│       ├── rabbitmq/
+│       ├── mongodb/
+│       ├── db-bootstrap/
+│       └── observability/
 └── README.md
 ```
-
-Clique aqui para visualizar o [diagrama da infraestrutura provisionada](https://github.com/zmathmatos/fiap-soat-tech-challenge-infra-db/blob/main/docs/infrastructure.mmd).
