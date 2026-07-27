@@ -31,9 +31,14 @@ variable "postgres_password" {
   sensitive   = true
 }
 
-variable "postgres_schemas" {
-  description = "Schemas to create (one per SQL microservice)"
-  type        = list(string)
+variable "postgres_services" {
+  description = "SQL microservices to provision (schema + dedicated login role)"
+  type = map(object({
+    schema   = string
+    role     = string
+    password = string
+  }))
+  sensitive = true
 }
 
 variable "image" {

@@ -140,6 +140,13 @@ module "mongodb" {
 # Mongo (app DB + user) and the Rabbit vhost are created by their own modules
 # via init-script / env — see modules/mongodb and modules/rabbitmq.
 # ---------------------------------------------------------------------------
+resource "random_password" "db_service" {
+  for_each = var.postgres_services
+
+  length  = 24
+  special = false
+}
+
 module "db_bootstrap" {
   source    = "./modules/db-bootstrap"
   namespace = module.namespace.name
@@ -149,7 +156,14 @@ module "db_bootstrap" {
   postgres_database = var.rds_database_name
   postgres_username = var.rds_master_username
   postgres_password = var.rds_master_password
-  postgres_schemas  = var.postgres_schemas
+
+  postgres_services = {
+    for key, svc in var.postgres_services : key => {
+      schema   = svc.schema
+      role     = svc.role
+      password = random_password.db_service[key].result
+    }
+  }
 
   depends_on = [module.rds, module.mongodb, module.rabbitmq]
 }

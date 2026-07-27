@@ -70,8 +70,28 @@ output "rds_security_group_id" {
 }
 
 output "postgres_schemas" {
-  description = "Postgres schemas created at provisioning"
-  value       = var.postgres_schemas
+  description = "Postgres schema per SQL microservice"
+  value       = module.db_bootstrap.schemas
+}
+
+output "postgres_roles" {
+  description = "Dedicated Postgres login role per SQL microservice"
+  value       = module.db_bootstrap.roles
+}
+
+output "postgres_service_credentials" {
+  description = "DB_USER / DB_PASSWORD / DB_SCHEMA per SQL microservice (feed into each repo's GitHub Secrets)"
+  sensitive   = true
+  value = {
+    for key, svc in var.postgres_services : key => {
+      DB_HOST     = module.rds.address
+      DB_PORT     = module.rds.port
+      DB_NAME     = module.rds.database_name
+      DB_SCHEMA   = svc.schema
+      DB_USER     = svc.role
+      DB_PASSWORD = random_password.db_service[key].result
+    }
+  }
 }
 
 # ---------------------------------------------------------------------------

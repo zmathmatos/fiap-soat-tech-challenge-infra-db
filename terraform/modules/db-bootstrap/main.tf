@@ -1,7 +1,32 @@
 locals {
-  name    = "db-bootstrap"
-  labels  = { app = "db-bootstrap" }
-  schemas = join(" ", var.postgres_schemas)
+  name   = "db-bootstrap"
+  labels = { app = "db-bootstrap" }
+
+  sql = join("\n", [
+    for key, svc in var.postgres_services : <<-SQL
+      ${svc.schema == "public" ? "" : format("CREATE SCHEMA IF NOT EXISTS %q;", svc.schema)}
+
+      DO $do$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${svc.role}') THEN
+          ALTER ROLE ${svc.role} WITH LOGIN PASSWORD '${svc.password}';
+        ELSE
+          CREATE ROLE ${svc.role} WITH LOGIN PASSWORD '${svc.password}';
+        END IF;
+      END
+      $do$;
+
+      GRANT ${svc.role} TO CURRENT_USER;
+
+      REVOKE ALL ON SCHEMA ${format("%q", svc.schema)} FROM PUBLIC;
+      GRANT USAGE, CREATE ON SCHEMA ${format("%q", svc.schema)} TO ${svc.role};
+      GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA ${format("%q", svc.schema)} TO ${svc.role};
+      GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ${format("%q", svc.schema)} TO ${svc.role};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA ${format("%q", svc.schema)} GRANT ALL ON TABLES TO ${svc.role};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA ${format("%q", svc.schema)} GRANT ALL ON SEQUENCES TO ${svc.role};
+      ALTER ROLE ${svc.role} SET search_path TO ${format("%q", svc.schema)};
+    SQL
+  ])
 
   # replace() strips CR so the script survives a Windows (CRLF) checkout —
   # otherwise /bin/sh chokes on "set -eu\r".
@@ -11,13 +36,9 @@ locals {
     until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; do
       sleep 5
     done
-    for schema in $SCHEMAS; do
-      echo "Creating schema '$schema' (if not exists)"
-      psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" \
-        -v ON_ERROR_STOP=1 \
-        -c "CREATE SCHEMA IF NOT EXISTS \"$schema\";"
-    done
-    echo "Provisioned schemas: $SCHEMAS"
+    psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" \
+      -v ON_ERROR_STOP=1 -f /sql/bootstrap.sql
+    echo "Bootstrap finished"
   EOT
   , "\r\n", "\n")
 }
@@ -30,8 +51,9 @@ resource "kubernetes_secret" "bootstrap" {
   }
 
   data = {
-    PGUSER     = var.postgres_username
-    PGPASSWORD = var.postgres_password
+    PGUSER          = var.postgres_username
+    PGPASSWORD      = var.postgres_password
+    "bootstrap.sql" = local.sql
   }
 
   type = "Opaque"
@@ -73,10 +95,12 @@ resource "kubernetes_job" "bootstrap" {
             name  = "PGDATABASE"
             value = var.postgres_database
           }
-          env {
-            name  = "SCHEMAS"
-            value = local.schemas
+          volume_mount {
+            name       = "sql"
+            mount_path = "/sql"
+            read_only  = true
           }
+
           env {
             name = "PGUSER"
             value_from {
@@ -93,6 +117,17 @@ resource "kubernetes_job" "bootstrap" {
                 name = kubernetes_secret.bootstrap.metadata[0].name
                 key  = "PGPASSWORD"
               }
+            }
+          }
+        }
+
+        volume {
+          name = "sql"
+          secret {
+            secret_name = kubernetes_secret.bootstrap.metadata[0].name
+            items {
+              key  = "bootstrap.sql"
+              path = "bootstrap.sql"
             }
           }
         }
