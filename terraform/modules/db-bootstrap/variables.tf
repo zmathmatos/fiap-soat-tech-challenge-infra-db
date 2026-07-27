@@ -34,11 +34,15 @@ variable "postgres_password" {
 variable "postgres_services" {
   description = "SQL microservices to provision (schema + dedicated login role)"
   type = map(object({
-    schema   = string
-    role     = string
-    password = string
+    schema = string
+    role   = string
   }))
-  sensitive = true
+}
+
+variable "postgres_passwords" {
+  description = "Generated password per service key"
+  type        = map(string)
+  sensitive   = true
 }
 
 variable "image" {

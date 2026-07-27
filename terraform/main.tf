@@ -157,13 +157,8 @@ module "db_bootstrap" {
   postgres_username = var.rds_master_username
   postgres_password = var.rds_master_password
 
-  postgres_services = {
-    for key, svc in var.postgres_services : key => {
-      schema   = svc.schema
-      role     = svc.role
-      password = random_password.db_service[key].result
-    }
-  }
+  postgres_services  = var.postgres_services
+  postgres_passwords = { for key, _ in var.postgres_services : key => random_password.db_service[key].result }
 
   depends_on = [module.rds, module.mongodb, module.rabbitmq]
 }

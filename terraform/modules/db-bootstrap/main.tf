@@ -9,9 +9,9 @@ locals {
       DO $do$
       BEGIN
         IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${svc.role}') THEN
-          ALTER ROLE ${svc.role} WITH LOGIN PASSWORD '${svc.password}';
+          ALTER ROLE ${svc.role} WITH LOGIN PASSWORD '${var.postgres_passwords[key]}';
         ELSE
-          CREATE ROLE ${svc.role} WITH LOGIN PASSWORD '${svc.password}';
+          CREATE ROLE ${svc.role} WITH LOGIN PASSWORD '${var.postgres_passwords[key]}';
         END IF;
       END
       $do$;
