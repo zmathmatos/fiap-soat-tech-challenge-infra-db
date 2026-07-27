@@ -18,6 +18,8 @@ locals {
 
       GRANT ${svc.role} TO CURRENT_USER;
 
+      GRANT CREATE ON DATABASE ${format("%q", var.postgres_database)} TO ${svc.role};
+
       REVOKE ALL ON SCHEMA ${format("%q", svc.schema)} FROM PUBLIC;
       GRANT USAGE, CREATE ON SCHEMA ${format("%q", svc.schema)} TO ${svc.role};
       GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA ${format("%q", svc.schema)} TO ${svc.role};
