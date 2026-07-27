@@ -59,3 +59,4 @@ jobs:
           TF_VAR_newrelic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
           TF_VAR_newrelic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
           TF_VAR_newrelic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          TF_VAR_alert_email: ${{ vars.ALERT_EMAIL }}
