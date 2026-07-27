@@ -330,3 +330,9 @@ variable "mongodb_storage" {
   type        = string
   default     = "5Gi"
 }
+
+variable "storage_persistence_enabled" {
+  description = "Provision PersistentVolumeClaims for RabbitMQ and MongoDB. Requires a working EBS CSI driver"
+  type        = bool
+  default     = true
+}

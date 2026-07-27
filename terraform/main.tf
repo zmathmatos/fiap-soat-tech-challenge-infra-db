@@ -32,6 +32,7 @@ module "network" {
 # ---------------------------------------------------------------------------
 module "eks" {
   source                  = "./modules/eks"
+  ebs_csi_enabled         = var.storage_persistence_enabled
   cluster_name            = local.cluster_name
   kubernetes_version      = var.kubernetes_version
   cluster_role_arn        = local.resolved_cluster_role_arn
@@ -115,6 +116,8 @@ module "rabbitmq" {
   vhost     = var.rabbitmq_vhost
   storage   = var.rabbitmq_storage
 
+  persistence_enabled = var.storage_persistence_enabled
+
   depends_on = [module.namespace]
 }
 
@@ -130,6 +133,8 @@ module "mongodb" {
   app_username  = var.mongodb_app_username
   app_password  = var.mongodb_app_password
   storage       = var.mongodb_storage
+
+  persistence_enabled = var.storage_persistence_enabled
 
   depends_on = [module.namespace]
 }

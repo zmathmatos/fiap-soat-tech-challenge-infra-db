@@ -90,6 +90,8 @@ resource "aws_eks_node_group" "main" {
 # Without it the gp2 StorageClass cannot provision volumes and pods stay Pending.
 # Pods run on the node role (AWS Academy: LabRole), which already has EC2/EBS access.
 resource "aws_eks_addon" "ebs_csi" {
+  count = var.ebs_csi_enabled ? 1 : 0
+
   cluster_name                = aws_eks_cluster.main.name
   addon_name                  = "aws-ebs-csi-driver"
   resolve_conflicts_on_create = "OVERWRITE"

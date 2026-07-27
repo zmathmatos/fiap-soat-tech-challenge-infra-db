@@ -1,7 +1,7 @@
 resource "aws_db_subnet_group" "main" {
   name       = "${var.identifier}-subnet-group"
   subnet_ids = var.subnet_ids
-  tags = merge(var.tags, { Name = "${var.identifier}-subnet-group" })
+  tags       = merge(var.tags, { Name = "${var.identifier}-subnet-group" })
 }
 
 resource "aws_security_group" "rds" {
@@ -71,8 +71,8 @@ resource "aws_db_instance" "main" {
   skip_final_snapshot       = var.skip_final_snapshot
   final_snapshot_identifier = "${var.identifier}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
 
-  auto_minor_version_upgrade      = var.auto_minor_version_upgrade
-  deletion_protection             = var.deletion_protection
+  auto_minor_version_upgrade = var.auto_minor_version_upgrade
+  deletion_protection        = var.deletion_protection
 
   tags = merge(var.tags, { Name = var.identifier })
 

@@ -93,19 +93,30 @@ resource "kubernetes_stateful_set" "rabbitmq" {
             }
           }
         }
+
+        dynamic "volume" {
+          for_each = var.persistence_enabled ? [] : [1]
+          content {
+            name = "data"
+            empty_dir {}
+          }
+        }
       }
     }
 
-    volume_claim_template {
-      metadata {
-        name = "data"
-      }
-      spec {
-        access_modes       = ["ReadWriteOnce"]
-        storage_class_name = var.storage_class_name
-        resources {
-          requests = {
-            storage = var.storage
+    dynamic "volume_claim_template" {
+      for_each = var.persistence_enabled ? [1] : []
+      content {
+        metadata {
+          name = "data"
+        }
+        spec {
+          access_modes       = ["ReadWriteOnce"]
+          storage_class_name = var.storage_class_name
+          resources {
+            requests = {
+              storage = var.storage
+            }
           }
         }
       }

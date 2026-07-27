@@ -105,3 +105,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "ebs_csi_enabled" {
+  description = "Install the aws-ebs-csi-driver addon. Requires EBS permissions on the node role"
+  type        = bool
+  default     = true
+}

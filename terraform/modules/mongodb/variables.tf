@@ -47,3 +47,9 @@ variable "storage_class_name" {
   type        = string
   default     = "gp2"
 }
+
+variable "persistence_enabled" {
+  description = "Use a PersistentVolumeClaim for data. Requires a working CSI driver; false falls back to emptyDir"
+  type        = bool
+  default     = true
+}
