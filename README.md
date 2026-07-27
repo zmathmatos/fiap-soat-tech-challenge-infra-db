@@ -16,17 +16,59 @@ Antes da Fase 4 a infraestrutura estava dividida em dois repositórios (`infra-k
 
 ## ⚠️ Decisão de arquitetura: banco único com isolamento lógico por schema
 
-> **Este projeto NÃO provisiona um banco por microsserviço.** Todos os serviços SQL compartilham **uma única instância RDS PostgreSQL**, e cada um recebe **seu próprio schema** (`os`, `execution`). O `billing-service` usa um **database dedicado** dentro de um único MongoDB.
+Este projeto não cria uma instância de banco por microsserviço. Os serviços SQL compartilham uma única instância RDS PostgreSQL, e cada um tem seu próprio schema e seu próprio usuário de banco. O billing-service usa um database separado dentro de um MongoDB único.
 
-**Por quê?** O AWS Academy tem limite de créditos — múltiplas instâncias RDS/DocumentDB estourariam o orçamento do laboratório. Optamos por **isolamento lógico** em vez de físico:
+O motivo é o limite de crédito do AWS Academy: uma instância RDS por serviço, somada a um DocumentDB para o Mongo, estouraria o orçamento do laboratório. Optamos por isolamento lógico.
 
-| Nível | Como o isolamento é garantido |
-|---|---|
-| PostgreSQL | Um schema por serviço (`os`, `execution`), criados automaticamente no provisionamento pelo módulo `db-bootstrap` |
-| MongoDB | Database `billing` exclusivo, com usuário próprio de acesso restrito (`readWrite` apenas nesse database) |
-| Regra de ouro | **Nenhum serviço acessa o schema/database de outro** — toda comunicação entre serviços é via RabbitMQ ou REST |
+### Como o isolamento funciona
 
-Estamos cientes de que, em uma arquitetura de microsserviços em produção real, **cada serviço teria sua própria instância de banco dedicada** (database-per-service). A separação por schema preserva o desacoplamento lógico e permite migrar para instâncias dedicadas sem mudança de código nos serviços — apenas de connection string.
+O requisito diz que nenhum serviço pode acessar o banco de outro. Aqui isso é imposto pelo sistema de permissões do Postgres, não por convenção de desenvolvimento.
+
+Para cada serviço SQL, o módulo `db-bootstrap` roda um Job no cluster que executa:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS "execution";
+
+CREATE ROLE execution_svc WITH LOGIN PASSWORD '...';
+
+REVOKE ALL ON SCHEMA "execution" FROM PUBLIC;
+GRANT USAGE, CREATE ON SCHEMA "execution" TO execution_svc;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA "execution" TO execution_svc;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA "execution" TO execution_svc;
+ALTER DEFAULT PRIVILEGES IN SCHEMA "execution" GRANT ALL ON TABLES TO execution_svc;
+ALTER DEFAULT PRIVILEGES IN SCHEMA "execution" GRANT ALL ON SEQUENCES TO execution_svc;
+ALTER ROLE execution_svc SET search_path TO "execution";
+```
+
+As duas linhas que garantem o isolamento são o `REVOKE` e o `GRANT` seguinte. O `REVOKE` remove o acesso que o Postgres concede a todas as roles por padrão; o `GRANT` devolve esse acesso apenas à role daquele serviço. Como nenhum serviço recebe `GRANT` no schema do outro:
+
+- `os_svc` não consegue executar SELECT em nenhuma tabela do schema `execution`. A query falha com `permission denied for schema execution`.
+- `execution_svc` não consegue ler as tabelas do os-service.
+- O `search_path` fixado na role restringe cada serviço ao próprio schema, mesmo quando a query não qualifica o nome da tabela.
+
+As senhas são geradas pelo Terraform (`random_password`, 24 caracteres) e não ficam no repositório. Para pegar as credenciais de cada serviço e jogar nos GitHub Secrets:
+
+```bash
+terraform output -json postgres_service_credentials
+```
+
+A saída traz `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_SCHEMA`, `DB_USER` e `DB_PASSWORD` separados por serviço.
+
+Do lado do Mongo, o billing-service tem um database próprio e um usuário com `readWrite` só nele.
+
+### Por que o os-service usa o schema `public`
+
+O os-service grava no schema `public`, não num schema chamado `os`. É o padrão do Sequelize, que não qualifica schema nas migrations.
+
+Isso não afeta o isolamento. A role `os_svc` é a única com GRANT em `public` (o `REVOKE ... FROM PUBLIC` tirou o acesso que todas as roles teriam), e `execution_svc` não tem permissão nenhuma ali.
+
+Deixamos como está porque renomear para `os` obrigaria a mexer em migrations, seeders e no `.sequelizerc` do serviço, e o ganho seria só de nomenclatura. Se quisermos mudar depois, basta ajustar `postgres_services.os.schema` aqui e a variável `DB_SCHEMA` do serviço.
+
+### O que essa decisão não resolve
+
+Em produção cada serviço teria sua própria instância de banco. Além do acesso, isso isolaria falha e carga: hoje, se um serviço saturar a instância, todos os serviços SQL são afetados. Schema + role resolve o problema de acesso, não o de blast radius.
+
+A migração para instâncias dedicadas não exige mudança de código nos serviços, apenas de connection string.
 
 ## Arquitetura provisionada
 
@@ -41,13 +83,13 @@ Estamos cientes de que, em uma arquitetura de microsserviços em produção real
 
 **Mapa de dados por microsserviço:**
 
-| Microsserviço | Banco | Isolamento |
-|---|---|---|
-| `os-service` | PostgreSQL | schema `os` |
-| `execution-service` | PostgreSQL | schema `execution` |
-| `billing-service` | MongoDB | database `billing` |
+| Microsserviço | Banco | Schema / Database | Credencial |
+|---|---|---|---|
+| `os-service` | PostgreSQL | schema `public` | role `os_svc` |
+| `execution-service` | PostgreSQL | schema `execution` | role `execution_svc` |
+| `billing-service` | MongoDB | database `billing` | usuário `billing` (`readWrite` só nesse database) |
 
-Todos os serviços trocam eventos via RabbitMQ (vhost `fiap-soat`) — nenhum serviço acessa o banco do outro diretamente.
+Todos os serviços trocam eventos via RabbitMQ (vhost `fiap-soat`). Nenhum serviço acessa o banco do outro — e isso é imposto por permissão do Postgres, não por convenção (ver seção de isolamento acima).
 
 ## Pré-requisitos
 
@@ -115,7 +157,7 @@ $(terraform output -raw eks_configure_kubectl)
 
 ### Como os schemas são criados ao provisionar
 
-- **PostgreSQL:** o módulo `db-bootstrap` roda um Job dentro do cluster (portanto com acesso à rede privada onde o RDS vive). O Job aguarda o banco ficar disponível e executa `CREATE SCHEMA IF NOT EXISTS` para cada schema em `postgres_schemas` (padrão: `os`, `execution`). É idempotente — rodar de novo não quebra nada.
+- **PostgreSQL:** o módulo `db-bootstrap` roda um Job dentro do cluster (portanto com acesso à rede privada onde o RDS vive). O Job aguarda o banco ficar disponível e, para cada entrada de `postgres_services`, cria o schema, a role de login e aplica os GRANTs restritos a esse schema. É idempotente: rodar de novo apenas reaplica as permissões e a senha.
 - **MongoDB:** o módulo `mongodb` cria o database e o usuário da aplicação (`billing`) via script de inicialização executado no primeiro boot do container.
 - **RabbitMQ:** o virtual host da aplicação (`fiap-soat`) é criado automaticamente pelo próprio RabbitMQ na inicialização.
 
@@ -131,7 +173,7 @@ $(terraform output -raw eks_configure_kubectl)
 | `eks_access_principal_arn` | ARN do principal com acesso ao cluster | `null` |
 | `rds_database_name` | Banco inicial do Postgres | `fiap_soat_db` |
 | `rds_master_username` / `rds_master_password` | Credenciais do RDS *(sensitive)* | — |
-| `postgres_schemas` | Schemas criados no provisionamento | `["os", "execution"]` |
+| `postgres_services` | Schema e role de login por microsserviço SQL | `os` → schema `public` / role `os_svc`; `execution` → schema `execution` / role `execution_svc` |
 | `rabbitmq_username` / `rabbitmq_password` | Credenciais do RabbitMQ | `fiap` / *(sensitive)* |
 | `rabbitmq_vhost` | Virtual host da aplicação | `fiap-soat` |
 | `mongodb_root_username` / `mongodb_root_password` | Credenciais root do Mongo | `root` / *(sensitive)* |
@@ -149,7 +191,9 @@ Lista completa em [`terraform/variables.tf`](terraform/variables.tf).
 | `eks_configure_kubectl` | Comando para configurar o `kubectl` |
 | `namespace` | Namespace da aplicação |
 | `rds_endpoint` / `rds_address` / `rds_port` | Conexão do PostgreSQL |
-| `postgres_schemas` | Schemas criados |
+| `postgres_schemas` | Schema de cada microsserviço SQL |
+| `postgres_roles` | Role de login de cada microsserviço SQL |
+| `postgres_service_credentials` | Credenciais de banco por microsserviço *(sensitive)* |
 | `rabbitmq_service` / `rabbitmq_amqp_url` | Conexão do RabbitMQ (interna ao cluster) |
 | `mongodb_service` / `mongodb_uri` | Conexão do MongoDB (interna ao cluster) |
 

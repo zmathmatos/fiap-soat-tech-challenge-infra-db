@@ -4,6 +4,11 @@ output "job_name" {
 }
 
 output "schemas" {
-  description = "Schemas created"
-  value       = var.postgres_schemas
+  description = "Schemas created, keyed by service"
+  value       = { for k, v in var.postgres_services : k => v.schema }
+}
+
+output "roles" {
+  description = "Login roles created, keyed by service"
+  value       = { for k, v in var.postgres_services : k => v.role }
 }

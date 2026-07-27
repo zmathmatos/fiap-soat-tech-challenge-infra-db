@@ -253,10 +253,16 @@ variable "rds_skip_final_snapshot" {
   default     = false
 }
 
-variable "postgres_schemas" {
-  description = "Postgres schemas created at provisioning (one per SQL microservice)"
-  type        = list(string)
-  default     = ["os", "execution"]
+variable "postgres_services" {
+  description = "SQL microservices: schema + dedicated login role provisioned per service"
+  type = map(object({
+    schema = string
+    role   = string
+  }))
+  default = {
+    os        = { schema = "public", role = "os_svc" }
+    execution = { schema = "execution", role = "execution_svc" }
+  }
 }
 
 # ---------------------------------------------------------------------------
