@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>FIAP SOAT — Tech Challenge Fase 4</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; font-size: 12px; line-height: 1.5; margin: 0; }
+  h1 { font-size: 22px; margin: 0 0 2px; color: #0b2545; }
+  h2 { font-size: 15px; margin: 20px 0 8px; color: #0b2545; border-bottom: 2px solid #d0d7de; padding-bottom: 4px; }
+  h3 { font-size: 13px; margin: 12px 0 4px; color: #13315c; }
+  .sub { color: #57606a; font-size: 12px; margin-bottom: 4px; }
+  table { border-collapse: collapse; width: 100%; margin: 6px 0; }
+  th, td { border: 1px solid #d0d7de; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #f0f3f7; }
+  code { background: #f0f3f7; padding: 1px 4px; border-radius: 3px; font-family: Consolas, monospace; font-size: 11px; }
+  ol, ul { margin: 4px 0 8px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  .muted { color: #57606a; }
+  .fill { color: #b42318; font-weight: 600; }
+  /* diagram */
+  .diagram { border: 1px solid #d0d7de; border-radius: 8px; padding: 12px; margin: 8px 0; background: #fbfcfe; }
+  .k8s { border: 1px dashed #8a94a6; border-radius: 8px; padding: 10px; margin-top: 8px; background: #ffffff; }
+  .k8s-title { font-size: 11px; color: #57606a; margin-bottom: 8px; font-weight: 600; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .svc { flex: 1; min-width: 150px; border-radius: 6px; padding: 8px; text-align: center; font-weight: 600; }
+  .os { background: #e8f5e9; border: 1px solid #66bb6a; }
+  .bill { background: #fff3e0; border: 1px solid #ffb74d; }
+  .exec { background: #e1f5fe; border: 1px solid #4fc3f7; }
+  .infra { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .box { border-radius: 6px; padding: 7px 10px; font-size: 11px; text-align: center; flex: 1; min-width: 120px; }
+  .db { background: #ede7f6; border: 1px solid #9575cd; }
+  .mq { background: #fce4ec; border: 1px solid #f06292; }
+  .ext { background: #eceff1; border: 1px solid #90a4ae; }
+  .flow { margin-top: 8px; font-size: 11px; }
+  .flow div { padding: 2px 0; }
+  .arrow { color: #0b2545; font-weight: 700; }
+  .foot { margin-top: 6px; font-size: 10px; color: #57606a; }
+  .pagebreak { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<h1>FIAP SOAT — Tech Challenge Fase 4</h1>
+<div class="sub">Sistema de Ordens de Serviço da Oficina Mecânica — Arquitetura de Microsserviços</div>
+
+<h2>1. Participantes</h2>
+<table>
+  <tr><th>Nome</th><th>RM</th><th>E-mail</th></tr>
+  <tr><td class="fill">(preencher)</td><td class="fill">(RM)</td><td class="fill">(e-mail)</td></tr>
+  <tr><td class="fill">(preencher)</td><td class="fill">(RM)</td><td class="fill">(e-mail)</td></tr>
+</table>
+
+<h2>2. Links dos repositórios</h2>
+<table>
+  <tr><th>Microsserviço</th><th>Repositório</th></tr>
+  <tr><td>OS Service</td><td>https://github.com/zmathmatos/fiap-soat-os-service</td></tr>
+  <tr><td>Billing Service</td><td>https://github.com/zmathmatos/fiap-soat-billing-service</td></tr>
+  <tr><td>Execution Service</td><td>https://github.com/zmathmatos/fiap-soat-execution-service</td></tr>
+  <tr><td>Infraestrutura (EKS + RDS + RabbitMQ + Mongo)</td><td>https://github.com/zmathmatos/fiap-soat-tech-challenge-infra-db</td></tr>
+  <tr><td>Lambda de autenticação (CPF)</td><td>https://github.com/zmathmatos/fiap-soat-tech-challenge-lambda</td></tr>
+</table>
+
+<h2>3. Vídeo de demonstração</h2>
+<p>Link (YouTube/Vimeo, ≤15 min, público ou não listado): <span class="fill">(preencher)</span></p>
+<p class="muted">Demonstra: fluxo completo de uma OS pelos 3 microsserviços, execução do Saga Pattern e compensação em falha, deploy automatizado com validação de testes, e monitoramento/rastreamento distribuído (New Relic).</p>
+
+<h2>4. Diagrama geral da arquitetura</h2>
+<div class="diagram">
+  <div class="row">
+    <div class="ext box" style="max-width:180px">Cliente / Atendente<br><span class="foot">+ Lambda Auth (CPF)</span></div>
+  </div>
+  <div class="k8s">
+    <div class="k8s-title">Kubernetes (AWS EKS) — namespace fiap-soat</div>
+    <div class="row">
+      <div class="svc os">os-service<br><span class="foot">Node/TS · REST</span></div>
+      <div class="svc bill">billing-service<br><span class="foot">Node/TS · REST + Webhook MP</span></div>
+      <div class="svc exec">execution-service<br><span class="foot">Node/TS · filas FIFO</span></div>
+    </div>
+    <div class="infra">
+      <div class="box mq">RabbitMQ (vhost fiap-soat)<br><span class="foot">service-order-events · quotation-events · payment-events · execution-events</span></div>
+      <div class="box db">MongoDB<br><span class="foot">db: billing</span></div>
+    </div>
+  </div>
+  <div class="infra">
+    <div class="box db">RDS PostgreSQL<br><span class="foot">schema public → os_svc · schema execution → execution_svc</span></div>
+    <div class="box ext">Mercado Pago<br><span class="foot">pagamento + webhook</span></div>
+    <div class="box ext">New Relic<br><span class="foot">APM + tracing distribuído</span></div>
+  </div>
+  <div class="flow">
+    <div><span class="arrow">→</span> os publica <code>order.received</code> e <code>quotation.requested</code></div>
+    <div><span class="arrow">→</span> billing consome <code>quotation.requested</code>; publica <code>payment.approved</code> / <code>payment.failed</code> / <code>quotation.rejected</code></div>
+    <div><span class="arrow">→</span> execution consome <code>order.received</code> e <code>payment.approved</code>; publica <code>diagnostic.finished</code> / <code>execution.finished</code> / <code>execution.failed</code></div>
+    <div><span class="arrow">→</span> os consome <code>payment.*</code> e <code>execution.*</code> para atualizar o status da OS</div>
+  </div>
+</div>
+<table>
+  <tr><th>Serviço</th><th>Banco</th><th>Isolamento</th></tr>
+  <tr><td>os-service</td><td>PostgreSQL (RDS) — schema <code>public</code></td><td>role <code>os_svc</code> (GRANT só neste schema)</td></tr>
+  <tr><td>execution-service</td><td>PostgreSQL (RDS) — schema <code>execution</code></td><td>role <code>execution_svc</code> (GRANT só neste schema)</td></tr>
+  <tr><td>billing-service</td><td>MongoDB — database <code>billing</code></td><td>usuário <code>billing</code> com <code>readWrite</code> só neste db</td></tr>
+</table>
+<p class="muted">Nenhum serviço acessa o banco de outro — imposto por permissões do PostgreSQL (<code>REVOKE ... FROM PUBLIC</code> + <code>GRANT</code> restrito por schema/role) e por usuário dedicado no MongoDB, não por convenção. Requisito SQL + NoSQL atendido (PostgreSQL + MongoDB).</p>
+
+<h2 class="pagebreak">5. Estratégia do Saga Pattern: Coreografia</h2>
+<p>Escolhemos <strong>saga coreografada</strong> (choreography): não há orquestrador central. Cada serviço <strong>publica os eventos das etapas que executa</strong> e <strong>reage</strong> aos eventos dos outros para dar continuidade ao fluxo. Cada <em>topic exchange</em> pertence ao seu publicador.</p>
+<h3>Fluxo feliz</h3>
+<ol>
+  <li>Abertura da OS (os) → <code>order.received</code> → execution enfileira para diagnóstico.</li>
+  <li>Diagnóstico registrado (execution) → <code>diagnostic.finished</code> → os move a OS para "Aguardando aprovação" → <code>quotation.requested</code>.</li>
+  <li>billing consome <code>quotation.requested</code> → gera orçamento e envia por e-mail.</li>
+  <li>Cliente aprova → billing cria preferência no Mercado Pago; pagamento confirmado (webhook) → <code>payment.approved</code> → os move a OS para "Em execução" e execution inicia o reparo.</li>
+  <li>Reparo finalizado (execution) → <code>execution.finished</code> → os conclui a OS ("Finalizado").</li>
+</ol>
+<h3>Rollback / compensação</h3>
+<ul>
+  <li><strong>Orçamento rejeitado</strong> → <code>quotation.rejected</code> → os/execution encerram/cancelam a OS.</li>
+  <li><strong>Pagamento recusado/cancelado</strong> → <code>payment.failed</code> → os move a OS para "Finalizado" e execution cancela a execução.</li>
+  <li>Entrega <strong>atômica</strong> via <em>outbox</em> (estado + evento na mesma transação) e <strong>idempotência</strong> por <code>messageId</code>/<code>serviceOrderId</code> nos consumidores (at-least-once sem duplicar efeitos).</li>
+</ul>
+<p class="muted"><strong>Por que coreografia:</strong> fluxo curto e de baixo acoplamento; evita ponto único de coordenação/falha, mantém cada serviço autônomo e escala melhor no cenário de múltiplas filiais. A menor visibilidade do fluxo distribuído é mitigada pelo <strong>tracing distribuído no New Relic</strong>.</p>
+
+<h2>6. Justificativa da divisão dos microsserviços e tecnologias</h2>
+<h3>Divisão por bounded context (DDD)</h3>
+<ul>
+  <li><strong>os-service</strong> — ciclo de vida da OS e cadastros (usuários, veículos, peças, serviços). Dono do status da OS.</li>
+  <li><strong>billing-service</strong> — orçamento e pagamento (Mercado Pago). Isolado por lidar com dinheiro e provedor externo, com dados documentais (payload de pagamento variável → NoSQL).</li>
+  <li><strong>execution-service</strong> — filas FIFO de diagnóstico e execução do reparo. Isolado pela regra de ordenação estrita e cadência própria da oficina.</li>
+</ul>
+<table>
+  <tr><th>Área</th><th>Escolha</th><th>Motivo</th></tr>
+  <tr><td>Runtime</td><td>Node.js 22 + TypeScript</td><td>Produtividade, tipagem, ecossistema</td></tr>
+  <tr><td>Arquitetura</td><td>Clean Architecture (4 camadas)</td><td>Testabilidade; dependências apontando ao domínio</td></tr>
+  <tr><td>SQL</td><td>PostgreSQL (os, execution)</td><td>Dados relacionais/transacionais (OS, filas)</td></tr>
+  <tr><td>NoSQL</td><td>MongoDB (billing)</td><td>Payload de pagamento flexível/semiestruturado</td></tr>
+  <tr><td>Mensageria</td><td>RabbitMQ (topic exchanges)</td><td>Integração assíncrona desacoplada da saga</td></tr>
+  <tr><td>Pagamento</td><td>Mercado Pago</td><td>Requisito do desafio</td></tr>
+  <tr><td>Orquestração</td><td>Kubernetes (AWS EKS) + HPA</td><td>Deploy automatizado e escala horizontal</td></tr>
+  <tr><td>CI/CD</td><td>GitHub Actions → ECR → EKS</td><td>Pipeline independente por serviço</td></tr>
+  <tr><td>Qualidade</td><td>SonarCloud + cobertura ≥80%</td><td>Verificação automática no CI</td></tr>
+  <tr><td>Observabilidade</td><td>New Relic (APM + tracing)</td><td>Rastreamento dos fluxos distribuídos</td></tr>
+</table>
+
+<h2>7. Testes e qualidade</h2>
+<ul>
+  <li><strong>Testes unitários</strong> em todos os serviços; <strong>cobertura mínima de 80%</strong> enforced no CI (Jest + SonarCloud).</li>
+  <li><strong>BDD (Cucumber)</strong> cobrindo fluxo completo + compensação da saga: os-service (<code>features/os-flow.feature</code>), billing-service (<code>features/billing-flow.feature</code>), execution-service (<code>features/execution-flow.feature</code>).</li>
+  <li><strong>SonarCloud</strong> por repositório (Quality Gate + cobertura) — badges nos READMEs.</li>
+  <li><strong>CI/CD independente</strong> por serviço (build → testes → Sonar → deploy EKS) e <strong>branch main protegida</strong> com PR obrigatório e checagens.</li>
+</ul>
+
+<h2>8. Nota de arquitetura — banco único com isolamento lógico</h2>
+<p class="muted">Por limite de crédito do AWS Academy, os serviços SQL compartilham uma única instância RDS com isolamento por schema + role (em vez de uma instância por serviço). O isolamento de acesso exigido pelo desafio está garantido por permissões do PostgreSQL. A migração para instâncias dedicadas não exige mudança de código — apenas de connection string. Detalhes no README do <code>fiap-soat-tech-challenge-infra-db</code>.</p>
+
+</body>
+</html>

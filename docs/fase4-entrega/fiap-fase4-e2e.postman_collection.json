@@ -1,0 +1,225 @@
+{
+  "info": {
+    "name": "FIAP SOAT Fase4 — Fluxo Completo E2E",
+    "description": "Fluxo ponta a ponta da Ordem de Servico pelos 3 microsservicos (saga coreografada), VALIDADO no ambiente EKS.\n\nPRE-REQUISITOS (rodar antes, em terminais separados):\n  kubectl port-forward -n fiap-soat svc/execution-service 8080:80\n  kubectl port-forward -n fiap-soat svc/mailhog 8025:8025\n\nRode os itens na ordem (1..14). O quotationId e capturado AUTOMATICAMENTE do Mailhog (passo 8b). A pasta 'Compensacao' cobre o rollback.\n\nURLs ja apontam para os LoadBalancers do os-service e billing-service.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "osUrl", "value": "http://a0a48557010284bdfb5bb64866355aae-a74803770ad4b48c.elb.us-east-1.amazonaws.com", "type": "string" },
+    { "key": "billingUrl", "value": "http://acb48d2b1790641a0802be6c096597bd-1e818f20432c240a.elb.us-east-1.amazonaws.com", "type": "string" },
+    { "key": "executionUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "mailhogUrl", "value": "http://localhost:8025", "type": "string" },
+    { "key": "adminEmail", "value": "admin@techchallenge.com", "type": "string" },
+    { "key": "adminPassword", "value": "admin123", "type": "string" },
+    { "key": "customerPassword", "value": "P@ssw0rd123", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "serviceId", "value": "", "type": "string" },
+    { "key": "serviceCode", "value": "", "type": "string" },
+    { "key": "serviceOrderId", "value": "", "type": "string" },
+    { "key": "serviceOrderNumber", "value": "", "type": "string" },
+    { "key": "quotationId", "value": "", "type": "string" },
+    { "key": "customerDocument", "value": "", "type": "string" },
+    { "key": "customerEmail", "value": "", "type": "string" },
+    { "key": "licensePlate", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "0. Health (os / billing / execution)",
+      "item": [
+        { "name": "os", "request": { "method": "GET", "url": { "raw": "{{osUrl}}/health", "host": ["{{osUrl}}"], "path": ["health"] } } },
+        { "name": "billing", "request": { "method": "GET", "url": { "raw": "{{billingUrl}}/health", "host": ["{{billingUrl}}"], "path": ["health"] } } },
+        { "name": "execution (port-forward 8080)", "request": { "method": "GET", "url": { "raw": "{{executionUrl}}/health", "host": ["{{executionUrl}}"], "path": ["health"] } } }
+      ]
+    },
+    {
+      "name": "1. [ADMIN] Login",
+      "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "var j = pm.response.json();",
+        "if (j && j.data && j.data.token) { pm.collectionVariables.set('adminToken', j.data.token); }",
+        "pm.test('admin logado (200)', function(){ pm.expect(pm.response.code).to.eql(200); });"
+      ] } } ],
+      "request": {
+        "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}" },
+        "url": { "raw": "{{osUrl}}/auth/login", "host": ["{{osUrl}}"], "path": ["auth", "login"] },
+        "description": "Admin ja provisionado (seed). Retorna o JWT usado para cadastrar o servico."
+      }
+    },
+    {
+      "name": "2. [ADMIN] Criar Servico (define o valor do orcamento)",
+      "event": [
+        { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+          "pm.collectionVariables.set('serviceCode', 'SRV' + Date.now().toString().slice(-6));"
+        ] } },
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "var j = pm.response.json(); var s = (j && j.data) ? j.data : j;",
+          "if (s && s.id) { pm.collectionVariables.set('serviceId', s.id); }",
+          "pm.test('servico criado (201)', function(){ pm.expect(pm.response.code).to.eql(201); });",
+          "console.log('serviceId =', s && s.id);"
+        ] } }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{adminToken}}" } ],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Troca de pastilhas\",\n  \"serviceCode\": \"{{serviceCode}}\",\n  \"price\": 300,\n  \"duration\": 60\n}" },
+        "url": { "raw": "{{osUrl}}/admin/services", "host": ["{{osUrl}}"], "path": ["admin", "services"] },
+        "description": "O valor do orcamento vem da soma dos servicos/pecas. price=300 -> orcamento R$300 (necessario >0 para o Mercado Pago aceitar o pagamento)."
+      }
+    },
+    {
+      "name": "3. [OS] Abrir Ordem de Servico (cliente)",
+      "event": [
+        { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+          "function dv(arr){var s=0,f=arr.length+1;for(var i=0;i<arr.length;i++){s+=arr[i]*(f-i);}var r=(s*10)%11;return r===10?0:r;}",
+          "var n=[];for(var i=0;i<9;i++){n.push(Math.floor(Math.random()*9));}",
+          "n.push(dv(n));n.push(dv(n));",
+          "var rid=Date.now().toString().slice(-5);",
+          "pm.collectionVariables.set('customerDocument', n.join(''));",
+          "pm.collectionVariables.set('customerEmail', 'cliente'+rid+'@teste.com');",
+          "pm.collectionVariables.set('licensePlate', 'FIA'+('0000'+rid).slice(-4));"
+        ] } },
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "var j = pm.response.json(); var so = (j && j.data) ? j.data : j;",
+          "if (so && so.id) { pm.collectionVariables.set('serviceOrderId', so.id); }",
+          "if (so && so.serviceOrderNumber) { pm.collectionVariables.set('serviceOrderNumber', String(so.serviceOrderNumber)); }",
+          "pm.test('OS criada (201)', function(){ pm.expect(pm.response.code).to.eql(201); });",
+          "console.log('serviceOrderId =', so && so.id, '| number =', so && so.serviceOrderNumber, '| status =', so && so.status);"
+        ] } }
+      ],
+      "request": {
+        "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Cliente Teste\",\n  \"document\": \"{{customerDocument}}\",\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\",\n  \"licensePlate\": \"{{licensePlate}}\",\n  \"brand\": \"Toyota\",\n  \"model\": \"Corolla\",\n  \"year\": 2020,\n  \"serviceIds\": [\"{{serviceId}}\"],\n  \"partIds\": []\n}" },
+        "url": { "raw": "{{osUrl}}/customer/service-orders", "host": ["{{osUrl}}"], "path": ["customer", "service-orders"] },
+        "description": "Cria cliente + veiculo + OS (status 'Recebido') com o servico do passo 2, e publica 'order.received' -> execution enfileira para diagnostico. Gera CPF/email/placa unicos a cada execucao."
+      }
+    },
+    {
+      "name": "4. [OS] Login do cliente (captura JWT)",
+      "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "var j = pm.response.json();",
+        "if (j && j.data && j.data.token) { pm.collectionVariables.set('token', j.data.token); }",
+        "pm.test('cliente logado (200)', function(){ pm.expect(pm.response.code).to.eql(200); });"
+      ] } } ],
+      "request": {
+        "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\"\n}" },
+        "url": { "raw": "{{osUrl}}/auth/login", "host": ["{{osUrl}}"], "path": ["auth", "login"] },
+        "description": "As rotas de consulta exigem JWT. Captura o token do cliente recem-criado."
+      }
+    },
+    {
+      "name": "5. [OS] Status da OS (deve estar 'Recebido')",
+      "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "var j = pm.response.json(); var so = (j && j.data) ? j.data : j;",
+        "console.log('status =', so && so.status);",
+        "pm.test('200', function(){ pm.expect(pm.response.code).to.eql(200); });"
+      ] } } ],
+      "request": {
+        "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+        "url": { "raw": "{{osUrl}}/customer/service-orders/number/{{serviceOrderNumber}}", "host": ["{{osUrl}}"], "path": ["customer", "service-orders", "number", "{{serviceOrderNumber}}"] },
+        "description": "Reutilize este request a cada etapa para ver o status mudar."
+      }
+    },
+    {
+      "name": "6. [EXEC] Fila de diagnostico",
+      "request": { "method": "GET", "url": { "raw": "{{executionUrl}}/api/queues/diagnosis", "host": ["{{executionUrl}}"], "path": ["api", "queues", "diagnosis"] },
+        "description": "A OS deve aparecer aqui (via evento order.received). So o HEAD da fila pode registrar diagnostico (409 caso contrario)." }
+    },
+    {
+      "name": "7. [EXEC] Registrar diagnostico (publica diagnostic.finished)",
+      "request": {
+        "method": "PATCH", "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": { "mode": "raw", "raw": "{\n  \"parts\": [],\n  \"services\": [\n    { \"id\": \"{{serviceId}}\", \"name\": \"Troca de pastilhas\", \"price\": 300 }\n  ]\n}" },
+        "url": { "raw": "{{executionUrl}}/api/executions/{{serviceOrderId}}/diagnosis", "host": ["{{executionUrl}}"], "path": ["api", "executions", "{{serviceOrderId}}", "diagnosis"] },
+        "description": "IMPORTANTE: o 'id' do servico deve existir no os-service (use {{serviceId}} do passo 2), senao a OS falha por FK e nao avanca. Publica 'diagnostic.finished' -> os move a OS para 'Aguardando aprovacao' -> billing gera o ORCAMENTO (e-mail no Mailhog)."
+      }
+    },
+    {
+      "name": "8. [OS] Status (deve estar 'Aguardando aprovacao')",
+      "request": {
+        "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+        "url": { "raw": "{{osUrl}}/customer/service-orders/number/{{serviceOrderNumber}}", "host": ["{{osUrl}}"], "path": ["customer", "service-orders", "number", "{{serviceOrderNumber}}"] }
+      }
+    },
+    {
+      "name": "8b. [MAILHOG] Capturar quotationId (auto)",
+      "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "var d = pm.response.json();",
+        "var num = pm.collectionVariables.get('serviceOrderNumber');",
+        "var items = (d && d.items) ? d.items : [];",
+        "var qid = '';",
+        "function extract(m){ var b = ((m.Content||{}).Body||'').replace(/=\\r\\n/g,'').replace(/=\\n/g,''); var mm = b.match(/quotations\\/([0-9a-fA-F-]{36})\\/approve/); return { id: mm?mm[1]:'', body: b }; }",
+        "// prefere o e-mail cujo corpo cita o numero da OS atual",
+        "for (var i=0;i<items.length;i++){ var e=extract(items[i]); if(e.id && num && e.body.indexOf(num)>-1){ qid=e.id; break; } }",
+        "if(!qid){ for (var k=0;k<items.length;k++){ var e2=extract(items[k]); if(e2.id){ qid=e2.id; break; } } }",
+        "if(qid){ pm.collectionVariables.set('quotationId', qid); console.log('quotationId =', qid); }",
+        "pm.test('quotationId capturado', function(){ pm.expect(qid).to.not.eql(''); });"
+      ] } } ],
+      "request": {
+        "method": "GET", "url": { "raw": "{{mailhogUrl}}/api/v2/messages?limit=30", "host": ["{{mailhogUrl}}"], "path": ["api", "v2", "messages"], "query": [ { "key": "limit", "value": "30" } ] },
+        "description": "Le o e-mail 'Orcamento gerado' no Mailhog e extrai o quotationId automaticamente para {{quotationId}}. (Alternativa manual: abrir http://localhost:8025 e copiar o id do link .../quotations/<id>/approve.)"
+      }
+    },
+    {
+      "name": "9. [BILLING] Aprovar orcamento (cria pagamento MP)",
+      "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('aprovado (200)', function(){ pm.expect(pm.response.code).to.eql(200); });",
+        "var j = pm.response.json(); console.log('quotation status =', j && j.status, '| amount =', j && j.amount);"
+      ] } } ],
+      "request": {
+        "method": "GET", "url": { "raw": "{{billingUrl}}/quotations/{{quotationId}}/approve", "host": ["{{billingUrl}}"], "path": ["quotations", "{{quotationId}}", "approve"] },
+        "description": "Aprova o orcamento, cria a preference no Mercado Pago e envia o LINK DE PAGAMENTO por e-mail (Mailhog, assunto 'Orcamento aprovado — efetue o pagamento'). Pague pelo sandbox com cartao de teste. ATENCAO: token MP e de producao — nao use cartao real."
+      }
+    },
+    {
+      "name": "10. [OS] Status (apos pagamento -> 'Em execucao')",
+      "request": {
+        "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+        "url": { "raw": "{{osUrl}}/customer/service-orders/number/{{serviceOrderNumber}}", "host": ["{{osUrl}}"], "path": ["customer", "service-orders", "number", "{{serviceOrderNumber}}"] },
+        "description": "Apos o pagamento, o Mercado Pago chama o webhook -> billing publica 'payment.approved' -> os move a OS para 'Em execucao' e execution enfileira o reparo."
+      }
+    },
+    {
+      "name": "11. [EXEC] Fila de execucao",
+      "request": { "method": "GET", "url": { "raw": "{{executionUrl}}/api/queues/execution", "host": ["{{executionUrl}}"], "path": ["api", "queues", "execution"] } }
+    },
+    {
+      "name": "12. [EXEC] Iniciar reparo",
+      "request": { "method": "PATCH", "url": { "raw": "{{executionUrl}}/api/executions/{{serviceOrderId}}/start", "host": ["{{executionUrl}}"], "path": ["api", "executions", "{{serviceOrderId}}", "start"] } }
+    },
+    {
+      "name": "13. [EXEC] Finalizar reparo (publica execution.finished)",
+      "request": { "method": "PATCH", "url": { "raw": "{{executionUrl}}/api/executions/{{serviceOrderId}}/finish", "host": ["{{executionUrl}}"], "path": ["api", "executions", "{{serviceOrderId}}", "finish"] },
+        "description": "Publica 'execution.finished' -> os conclui a OS ('Finalizado')." }
+    },
+    {
+      "name": "14. [OS] Status final (deve estar 'Finalizado')",
+      "request": {
+        "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+        "url": { "raw": "{{osUrl}}/customer/service-orders/number/{{serviceOrderNumber}}", "host": ["{{osUrl}}"], "path": ["customer", "service-orders", "number", "{{serviceOrderNumber}}"] }
+      }
+    },
+    {
+      "name": "Compensacao (Saga - rollback)",
+      "item": [
+        {
+          "name": "A. [BILLING] Rejeitar orcamento (-> quotation.rejected)",
+          "request": {
+            "method": "GET", "url": { "raw": "{{billingUrl}}/quotations/{{quotationId}}/reject", "host": ["{{billingUrl}}"], "path": ["quotations", "{{quotationId}}", "reject"] },
+            "description": "Compensacao: rejeita o orcamento -> publica 'quotation.rejected' -> os e execution encerram/cancelam a OS ('Finalizado'). Use no lugar dos passos 9..14 para demonstrar rollback (rode ate o passo 8b para ter o quotationId)."
+          }
+        },
+        {
+          "name": "B. [BILLING] Webhook Mercado Pago (referencia)",
+          "request": {
+            "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"type\": \"payment\",\n  \"data\": {\n    \"id\": \"<ID_DO_PAGAMENTO_MP>\"\n  }\n}" },
+            "url": { "raw": "{{billingUrl}}/webhooks/mercadopago", "host": ["{{billingUrl}}"], "path": ["webhooks", "mercadopago"] },
+            "description": "Endpoint que o Mercado Pago chama automaticamente apos o pagamento. Chamada manual so funciona com um ID real de pagamento MP. Aprovado -> 'payment.approved'; recusado/cancelado -> 'payment.failed'."
+          }
+        }
+      ]
+    }
+  ]
+}

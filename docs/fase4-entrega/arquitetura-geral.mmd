@@ -1,0 +1,57 @@
+---
+config:
+  layout: dagre
+---
+flowchart TB
+    CLIENT(["Cliente / Atendente"])
+    LAMBDA["Lambda Auth (CPF)"]
+
+    subgraph K8S["Kubernetes (AWS EKS) — namespace fiap-soat"]
+        direction TB
+
+        subgraph OS["os-service (Node/TS)"]
+            OS_API["REST API"]
+        end
+        subgraph BILL["billing-service (Node/TS)"]
+            BILL_API["REST API + MP Webhook"]
+        end
+        subgraph EXEC["execution-service (Node/TS)"]
+            EXEC_API["REST API (filas FIFO)"]
+        end
+
+        RABBIT{{"RabbitMQ (vhost fiap-soat)<br/>service-order-events · quotation-events<br/>payment-events · execution-events"}}
+        MONGO[("MongoDB<br/>db: billing")]
+    end
+
+    RDS[("RDS PostgreSQL<br/>schema public → os_svc<br/>schema execution → execution_svc")]
+    MP["Mercado Pago"]
+    NR["New Relic (APM + tracing)"]
+
+    CLIENT --> OS_API
+    CLIENT --> LAMBDA
+    LAMBDA -. valida CPF .-> OS_API
+
+    OS_API --- RDS
+    EXEC_API --- RDS
+    BILL_API --- MONGO
+
+    %% Saga coreografada (eventos)
+    OS_API -- order.received --> RABBIT
+    OS_API -- quotation.requested --> RABBIT
+    RABBIT -- quotation.requested --> BILL_API
+    RABBIT -- order.received --> EXEC_API
+    BILL_API -- payment.approved / payment.failed / quotation.rejected --> RABBIT
+    RABBIT -- payment.* --> OS_API
+    RABBIT -- payment.approved / quotation.rejected --> EXEC_API
+    EXEC_API -- diagnostic.finished / execution.finished / execution.failed --> RABBIT
+    RABBIT -- execution.* / diagnostic.finished --> OS_API
+
+    BILL_API <--> MP
+    OS -.-> NR
+    BILL -.-> NR
+    EXEC -.-> NR
+
+    style OS fill:#e8f5e9
+    style BILL fill:#fff3e0
+    style EXEC fill:#e1f5fe
+    style K8S fill:#f6f6f6
