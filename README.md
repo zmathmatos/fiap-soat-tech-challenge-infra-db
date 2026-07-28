@@ -1,5 +1,8 @@
 # fiap-soat-tech-challenge-infra-db
 
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=zmathmatos_fiap-soat-tech-challenge-infra-db&metric=alert_status)](https://sonarcloud.io/summary/overall?id=zmathmatos_fiap-soat-tech-challenge-infra-db)
+[![Security Hotspots](https://sonarcloud.io/api/project_badges/measure?project=zmathmatos_fiap-soat-tech-challenge-infra-db&metric=security_hotspots)](https://sonarcloud.io/project/security_hotspots?id=zmathmatos_fiap-soat-tech-challenge-infra-db)
+
 ## Visão geral
 
 Repositório de **infraestrutura centralizada** do FIAP SOAT Tech Challenge (Fase 4). Um único `terraform apply` provisiona toda a base compartilhada pelos microsserviços:
